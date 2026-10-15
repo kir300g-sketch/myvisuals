@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "myvisuals",
+  "version": "${version}",
+  "name": "My Visuals",
+  "description": "Client-side cosmetic visuals with an animated menu.",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.example.visuals.VisualsClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
