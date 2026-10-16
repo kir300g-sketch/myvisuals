@@ -5,6 +5,7 @@
   "name": "My Visuals",
   "description": "Client-side cosmetic visuals with an animated menu.",
   "environment": "client",
+  "mixins": ["myvisuals.mixins.json"],
   "entrypoints": {
     "client": ["com.example.visuals.VisualsClient"]
   },
