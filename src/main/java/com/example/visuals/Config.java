@@ -23,6 +23,18 @@ public class Config {
     public float trailSize = 1.0f;
     public int trailDensity = 2;
 
+    // Лента, круги, шляпа, нимб
+    public boolean ribbonEnabled = true;
+    public float ribbonLife = 1.5f;
+    public float ribbonHeight = 0.4f;
+    public boolean jumpEnabled = true;
+    public float jumpSize = 1.8f;
+    public boolean hatEnabled = false;
+    public float hatSize = 1.0f;
+    public boolean haloEnabled = false;
+    public boolean fxRainbow = true;
+    public float fxHue = 0.75f;
+
     // Мир
     public boolean snowEnabled = false;
     public int snowDensity = 6;

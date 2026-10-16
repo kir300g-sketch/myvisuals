@@ -15,11 +15,12 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class VisualsScreen extends Screen {
-    private static final int W = 290, H = 262;
+    private static final int W = 290;
+    private int H = 262;
     private static final int ROW = 28;
     private static final int ACCENT = 0x7C5CFF;
 
-    private final String[] tabNames = {"Аура", "След", "Мир"};
+    private final String[] tabNames = {"Аура", "След", "Эффекты", "Мир"};
     private final List<List<Option>> pages = new ArrayList<>();
 
     private int tab = 0;
@@ -44,12 +45,25 @@ public class VisualsScreen extends Screen {
         pages.add(aura);
 
         List<Option> trail = new ArrayList<>();
-        trail.add(new Toggle("Включить след", () -> c.trailEnabled, v -> c.trailEnabled = v));
+        trail.add(new Toggle("Частицы-след", () -> c.trailEnabled, v -> c.trailEnabled = v));
+        trail.add(new Toggle("Лента-шлейф", () -> c.ribbonEnabled, v -> c.ribbonEnabled = v));
         trail.add(new Toggle("Радужный цвет", () -> c.trailRainbow, v -> c.trailRainbow = v));
         trail.add(new HueSlider("Цвет", () -> c.trailHue, v -> c.trailHue = v));
-        trail.add(new Slider("Плотность", 1, 6, 0, () -> (float) c.trailDensity, v -> c.trailDensity = Math.round(v)));
-        trail.add(new Slider("Размер", 0.4f, 3f, 2, () -> c.trailSize, v -> c.trailSize = v));
+        trail.add(new Slider("Плотность частиц", 1, 6, 0, () -> (float) c.trailDensity, v -> c.trailDensity = Math.round(v)));
+        trail.add(new Slider("Размер частиц", 0.4f, 3f, 2, () -> c.trailSize, v -> c.trailSize = v));
+        trail.add(new Slider("Длина ленты (сек)", 0.5f, 4f, 1, () -> c.ribbonLife, v -> c.ribbonLife = v));
+        trail.add(new Slider("Высота ленты", 0.1f, 1.2f, 2, () -> c.ribbonHeight, v -> c.ribbonHeight = v));
         pages.add(trail);
+
+        List<Option> fx = new ArrayList<>();
+        fx.add(new Toggle("Круги при прыжке", () -> c.jumpEnabled, v -> c.jumpEnabled = v));
+        fx.add(new Slider("Размер кругов", 0.8f, 3.5f, 1, () -> c.jumpSize, v -> c.jumpSize = v));
+        fx.add(new Toggle("Китайская шляпа", () -> c.hatEnabled, v -> c.hatEnabled = v));
+        fx.add(new Slider("Размер шляпы", 0.6f, 2f, 1, () -> c.hatSize, v -> c.hatSize = v));
+        fx.add(new Toggle("Нимб", () -> c.haloEnabled, v -> c.haloEnabled = v));
+        fx.add(new Toggle("Радужный цвет", () -> c.fxRainbow, v -> c.fxRainbow = v));
+        fx.add(new HueSlider("Цвет эффектов", () -> c.fxHue, v -> c.fxHue = v));
+        pages.add(fx);
 
         List<Option> world = new ArrayList<>();
         world.add(new Toggle("Снег", () -> c.snowEnabled, v -> c.snowEnabled = v));
@@ -58,9 +72,24 @@ public class VisualsScreen extends Screen {
         world.add(new Toggle("Своё время суток", () -> c.timeOverride, v -> c.timeOverride = v));
         world.add(new Slider("Время (0-24000)", 0, 24000, 0, () -> c.timeOfDay, v -> c.timeOfDay = v));
         pages.add(world);
+
+        int rows = 0;
+        for (List<Option> pg : pages) rows = Math.max(rows, pg.size());
+        H = 62 + rows * ROW + 26;
     }
 
     // ---------- утилиты ----------
+    private static void rr(DrawContext c, int x1, int y1, int x2, int y2, int r, int color) {
+        r = Math.max(0, Math.min(r, Math.min(y2 - y1, x2 - x1) / 2));
+        for (int i = 0; i < r; i++) {
+            double d = r - i - 0.5;
+            int inset = r - (int) Math.round(Math.sqrt(r * r - d * d));
+            c.fill(x1 + inset, y1 + i, x2 - inset, y1 + i + 1, color);
+            c.fill(x1 + inset, y2 - i - 1, x2 - inset, y2 - i, color);
+        }
+        c.fill(x1, y1 + r, x2, y2 - r, color);
+    }
+
     private static int col(int rgb, float a) {
         int al = Math.max(5, Math.min(255, (int) (a * 255)));
         return (al << 24) | (rgb & 0xFFFFFF);
@@ -124,14 +153,14 @@ public class VisualsScreen extends Screen {
             if (t < 0) t = get.get() ? 1f : 0f;
             t = approach(t, get.get() ? 1f : 0f, dt * 12f);
 
-            c.fill(x, y, x + w, y + ROW - 4, col(0xFFFFFF, (0.04f + 0.05f * hover) * a));
+            rr(c, x, y, x + w, y + ROW - 4, 5, col(0xFFFFFF, (0.04f + 0.05f * hover) * a));
             c.drawText(tr, label, x + 8, y + 8, col(0xFFFFFF, (0.8f + 0.2f * hover) * a), false);
 
             int sw = 30, sh = 14;
             int sx = x + w - sw - 8, sy = y + 5;
-            c.fill(sx, sy, sx + sw, sy + sh, col(mix(0x3A3A48, ACCENT, t), a));
+            rr(c, sx, sy, sx + sw, sy + sh, 7, col(mix(0x3A3A48, ACCENT, t), a));
             int kx = sx + 2 + Math.round(16 * t);
-            c.fill(kx, sy + 2, kx + 10, sy + sh - 2, col(0xFFFFFF, a));
+            rr(c, kx, sy + 2, kx + 10, sy + sh - 2, 5, col(0xFFFFFF, a));
         }
     }
 
@@ -171,8 +200,8 @@ public class VisualsScreen extends Screen {
         }
 
         void drawTrack(DrawContext c, int tx, int ty, int tw, float a) {
-            c.fill(tx, ty, tx + tw, ty + 4, col(0x3A3A48, a));
-            c.fill(tx, ty, tx + Math.round(tw * disp), ty + 4, col(ACCENT, a));
+            rr(c, tx, ty, tx + tw, ty + 4, 2, col(0x3A3A48, a));
+            rr(c, tx, ty, tx + Math.max(4, Math.round(tw * disp)), ty + 4, 2, col(ACCENT, a));
         }
 
         @Override
@@ -181,7 +210,7 @@ public class VisualsScreen extends Screen {
             if (disp < 0) disp = norm();
             disp = approach(disp, norm(), dt * 18f);
 
-            c.fill(x, y, x + w, y + ROW - 4, col(0xFFFFFF, (0.04f + 0.05f * hover) * a));
+            rr(c, x, y, x + w, y + ROW - 4, 5, col(0xFFFFFF, (0.04f + 0.05f * hover) * a));
             c.drawText(tr, label, x + 8, y + 4, col(0xFFFFFF, (0.8f + 0.2f * hover) * a), false);
             String v = String.format(Locale.ROOT, "%." + decimals + "f", get.get());
             c.drawText(tr, v, x + w - 8 - tr.getWidth(v), y + 4, col(0xB9A8FF, a), false);
@@ -189,7 +218,7 @@ public class VisualsScreen extends Screen {
             int tx = x + 8, tw = w - 16, ty = y + 15;
             drawTrack(c, tx, ty, tw, a);
             int kx = tx + Math.round(tw * disp);
-            c.fill(kx - 2, ty - 2, kx + 2, ty + 6, col(0xFFFFFF, a));
+            rr(c, kx - 3, ty - 2, kx + 3, ty + 6, 3, col(0xFFFFFF, a));
         }
     }
 
@@ -232,9 +261,12 @@ public class VisualsScreen extends Screen {
         int py = (height - H) / 2 + Math.round((1f - ease) * 26);
 
         // тень и панель
-        c.fill(px - 2, py - 2, px + W + 2, py + H + 2, col(0x000000, 0.30f * ease));
-        c.fill(px, py, px + W, py + H, col(0x14141C, 0.94f * ease));
-        c.fillGradient(px, py, px + W, py + 28, col(0x2A2250, ease), col(0x14141C, 0.0f + 0.01f));
+        for (int i = 4; i >= 1; i--) {
+            rr(c, px - i * 2, py - i * 2, px + W + i * 2, py + H + i * 2, 8 + i * 2, col(0x000000, 0.07f * ease));
+        }
+        rr(c, px, py, px + W, py + H, 8, col(0x14141C, 0.95f * ease));
+        rr(c, px, py, px + W, py + 28, 8, col(0x221C44, ease));
+        c.fill(px, py + 14, px + W, py + 28, col(0x221C44, ease));
 
         // заголовок
         c.drawText(textRenderer, "✦ Visuals", px + 12, py + 10, col(0xFFFFFF, ease), true);
