@@ -72,6 +72,51 @@ public class Config {
     public boolean wxRainbow = true;
     public float wxHue = 0.6f;
 
+    // Выбор эффекта мира (0 выкл, 1 дождь, 2 звёзды, 3 сердечки, 4 конфетти)
+    public int worldFx = 0;
+
+    public Fall sel() {
+        switch (worldFx) {
+            case 2:
+                return stars;
+            case 3:
+                return hearts;
+            case 4:
+                return confetti;
+            default:
+                return rain;
+        }
+    }
+
+    // Анти-тряска
+    public boolean antiShake = false;
+    public boolean antiBob = false;
+
+    // Крит-эффект
+    public boolean critEnabled = false;
+    public int critMode = 0;
+    public int critShape = 3;
+    public int critCount = 30;
+    public float critSize = 0.2f;
+
+    // Комбо
+    public boolean comboEnabled = false;
+    public float comboSize = 1.2f;
+    public float comboLife = 1.6f;
+    public float comboReset = 2.5f;
+    public boolean comboResetOnHurt = true;
+    public boolean comboFire = true;
+    public boolean comboPlayersOnly = false;
+
+    // Небо
+    public boolean skyEnabled = false;
+    public int skyStyle = 0;
+    public float skySpin = 0.3f;
+    public float skyBright = 1f;
+
+    // Тотем
+    public int totemRes = 2;
+
     // Чанки
     public boolean chunkAnim = false;
     public float chunkDist = 8f;

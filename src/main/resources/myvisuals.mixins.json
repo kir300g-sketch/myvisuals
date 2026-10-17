@@ -5,7 +5,8 @@
   "client": [
     "HeldItemRendererMixin",
     "WorldRendererMixin",
-    "BackgroundRendererMixin"
+    "BackgroundRendererMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 0

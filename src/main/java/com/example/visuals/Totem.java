@@ -1,34 +1,36 @@
 package com.example.visuals;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.Sprite;
-import net.minecraft.client.texture.SpriteAtlasTexture;
-import net.minecraft.util.Identifier;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
+import net.minecraft.resource.ResourcePackManager;
+import net.minecraft.resource.ResourcePackProfile;
 
 import javax.imageio.ImageIO;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.nio.ByteBuffer;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
-/** Подмена текстуры тотема бессмертия прямо в атласе, без перезахода. */
+/**
+ * Свой тотем: мод сам делает ресурспак с картинкой выбранного разрешения (до 512x512),
+ * включает его и перезагружает ресурсы. Тотем сохраняет чёткость везде: в инвентаре, в руке, при срабатывании.
+ */
 public final class Totem {
     private Totem() {
     }
 
     public static String status = "Картинка не загружена";
 
+    private static final String PACK = "MyVisualsTotem";
+    private static final int[] RES = {64, 128, 256, 512};
     private static BufferedImage image = null;
-    private static Object lastSprite = null;
-    private static boolean tried = false;
 
     public static Path dir() {
         return FabricLoader.getInstance().getConfigDir().resolve("myvisuals");
@@ -36,6 +38,14 @@ public final class Totem {
 
     public static Path file() {
         return dir().resolve("totem.png");
+    }
+
+    private static Path packRoot() {
+        return MinecraftClient.getInstance().runDirectory.toPath().resolve("resourcepacks").resolve(PACK);
+    }
+
+    public static void tick(MinecraftClient mc) {
+        // ничего делать не нужно: пак остаётся включённым между запусками
     }
 
     public static void loadDropped(List<Path> paths) {
@@ -67,10 +77,46 @@ public final class Totem {
                 }
             }
             image = img;
-            lastSprite = null;
             Config.I.totemEnabled = true;
             Config.save();
-            status = "Тотем загружен";
+            generatePack();
+            enable(true);
+        } catch (Exception e) {
+            status = "Ошибка: " + e.getMessage();
+        }
+    }
+
+    /** Перегенерировать пак (например, после смены разрешения). */
+    public static void regenerate() {
+        try {
+            if (image == null && Files.exists(file())) image = ImageIO.read(file().toFile());
+            if (image == null) {
+                status = "Сначала загрузи картинку";
+                return;
+            }
+            generatePack();
+            if (Config.I.totemEnabled) enable(true);
+        } catch (Exception e) {
+            status = "Ошибка: " + e.getMessage();
+        }
+    }
+
+    public static void setEnabled(boolean v) {
+        Config.I.totemEnabled = v;
+        Config.save();
+        try {
+            if (v) {
+                if (image == null && Files.exists(file())) image = ImageIO.read(file().toFile());
+                if (image == null) {
+                    status = "Сначала загрузи картинку";
+                    Config.I.totemEnabled = false;
+                    return;
+                }
+                generatePack();
+                enable(true);
+            } else {
+                enable(false);
+            }
         } catch (Exception e) {
             status = "Ошибка: " + e.getMessage();
         }
@@ -78,70 +124,94 @@ public final class Totem {
 
     public static void reset() {
         image = null;
-        lastSprite = null;
         Config.I.totemEnabled = false;
         Config.save();
-        status = "Сброшено, ресурсы перезагружаются";
-        MinecraftClient.getInstance().reloadResources();
-    }
-
-    public static void tick(MinecraftClient mc) {
-        if (!Config.I.totemEnabled) return;
-        if (image == null && !tried) {
-            tried = true;
-            if (Files.exists(file())) loadPath(file(), false);
-        }
-        if (image == null) return;
         try {
-            SpriteAtlasTexture atlas = mc.getBakedModelManager().getAtlas(Identifier.of("minecraft", "textures/atlas/blocks.png"));
-            if (atlas == null) return;
-            Sprite sprite = atlas.getSprite(Identifier.of("minecraft", "item/totem_of_undying"));
-            if (sprite != lastSprite) {
-                lastSprite = sprite;
-                apply(mc, atlas, sprite);
-            }
+            enable(false);
+            Files.deleteIfExists(file());
+            deleteRecursive(packRoot());
+            status = "Сброшено";
         } catch (Exception e) {
-            status = "Ошибка применения: " + e;
+            status = "Ошибка: " + e.getMessage();
         }
     }
 
-    private static void apply(MinecraftClient mc, SpriteAtlasTexture atlas, Sprite sprite) {
-        int sw = sprite.getContents().getWidth();
-        int sh = sprite.getContents().getHeight();
-        int mips = mc.options.getMipmapLevels().getValue();
-
-        RenderSystem.bindTexture(atlas.getGlId());
-        GL11.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);
-        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_PIXELS, 0);
-        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_ROWS, 0);
-        GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4);
-        for (int lvl = 0; lvl <= mips; lvl++) {
-            int w = sw >> lvl, h = sh >> lvl;
-            if (w < 1 || h < 1) break;
-            ByteBuffer buf = toBuffer(image, w, h);
-            GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, lvl, sprite.getX() >> lvl, sprite.getY() >> lvl,
-                    w, h, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+    // ---------- генерация пака ----------
+    private static BufferedImage resize(BufferedImage src, int w, int h) {
+        BufferedImage cur = src;
+        while (cur.getWidth() > w * 2 || cur.getHeight() > h * 2) {
+            int nw = Math.max(w, cur.getWidth() / 2), nh = Math.max(h, cur.getHeight() / 2);
+            cur = step(cur, nw, nh);
         }
-        status = "Тотем применён";
+        return step(cur, w, h);
     }
 
-    private static ByteBuffer toBuffer(BufferedImage src, int w, int h) {
+    private static BufferedImage step(BufferedImage src, int w, int h) {
         BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = dst.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g.drawImage(src, 0, 0, w, h, null);
         g.dispose();
-        ByteBuffer buf = BufferUtils.createByteBuffer(w * h * 4);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int p = dst.getRGB(x, y);
-                buf.put((byte) ((p >> 16) & 255));
-                buf.put((byte) ((p >> 8) & 255));
-                buf.put((byte) (p & 255));
-                buf.put((byte) ((p >>> 24) & 255));
-            }
+        return dst;
+    }
+
+    private static void generatePack() throws IOException {
+        int idx = Math.max(0, Math.min(RES.length - 1, Config.I.totemRes));
+        int R = RES[idx];
+        double s = Math.min(R / (double) image.getWidth(), R / (double) image.getHeight());
+        int w = Math.max(1, (int) Math.round(image.getWidth() * s));
+        int h = Math.max(1, (int) Math.round(image.getHeight() * s));
+        BufferedImage fit = resize(image, w, h);
+
+        BufferedImage sq = new BufferedImage(R, R, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = sq.createGraphics();
+        g.drawImage(fit, (R - w) / 2, (R - h) / 2, null);
+        g.dispose();
+
+        Path root = packRoot();
+        Path tex = root.resolve("assets/minecraft/textures/item/totem_of_undying.png");
+        Files.createDirectories(tex.getParent());
+        Files.writeString(root.resolve("pack.mcmeta"),
+                "{\"pack\":{\"pack_format\":34,\"description\":\"My Visuals totem\"}}");
+        ImageIO.write(sq, "png", tex.toFile());
+        status = "Пак создан (" + R + "x" + R + "), перезагрузка ресурсов...";
+    }
+
+    private static void deleteRecursive(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        try (Stream<Path> w = Files.walk(root)) {
+            List<Path> list = new ArrayList<>();
+            w.sorted(Comparator.reverseOrder()).forEach(list::add);
+            for (Path p : list) Files.deleteIfExists(p);
         }
-        buf.flip();
-        return buf;
+    }
+
+    // ---------- включение/выключение пака ----------
+    private static void enable(boolean on) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        ResourcePackManager rpm = mc.getResourcePackManager();
+        rpm.scanPacks();
+        String id = "file/" + PACK;
+        List<String> list = new ArrayList<>();
+        for (ResourcePackProfile p : rpm.getEnabledProfiles()) list.add(p.getId());
+        boolean has = list.contains(id);
+        if (on && !has) {
+            if (rpm.getProfile(id) == null) {
+                status = "Пак не найден в папке resourcepacks";
+                return;
+            }
+            list.add(id);
+        } else if (!on && has) {
+            list.remove(id);
+        }
+        rpm.setEnabledProfiles(list);
+        mc.options.resourcePacks.clear();
+        for (ResourcePackProfile p : rpm.getEnabledProfiles()) {
+            if (!p.isPinned()) mc.options.resourcePacks.add(p.getId());
+        }
+        mc.options.write();
+        mc.reloadResources();
+        status = on ? "Тотем применён" : "Тотем выключен";
     }
 }

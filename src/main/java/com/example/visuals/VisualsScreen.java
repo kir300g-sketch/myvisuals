@@ -79,18 +79,6 @@ public class VisualsScreen extends Screen {
         return m;
     }
 
-    private void fallMod(Category cat, String name, Config.Fall f, boolean rain, Config c) {
-        Module m = mod(cat, name, () -> f.enabled, v -> f.enabled = v);
-        m.opts.add(new Widgets.Slider("Скорость", 0.2f, 4f, 2, () -> f.speed, v -> f.speed = v));
-        m.opts.add(new Widgets.Slider("Частота", 1, 40, 0, () -> (float) f.freq, v -> f.freq = Math.round(v)));
-        m.opts.add(new Widgets.Slider("Плотность", 20, 2000, 0, () -> (float) f.density, v -> f.density = Math.round(v)));
-        if (rain) {
-            m.opts.add(new Widgets.Slider("Длина капель", 0.3f, 3f, 2, () -> c.rainLength, v -> c.rainLength = v));
-        } else {
-            m.opts.add(new Widgets.Slider("Размер", 0.08f, 0.8f, 2, () -> f.size, v -> f.size = v));
-        }
-    }
-
     public VisualsScreen() {
         super(Text.literal("Visuals"));
         Config c = Config.I;
@@ -123,11 +111,21 @@ public class VisualsScreen extends Screen {
         th.opts.add(new Widgets.Slider("Высота", 0.8f, 1.6f, 2, () -> c.hudTarget.rowH, v -> c.hudTarget.rowH = v));
         th.opts.add(new Widgets.Slider("Время показа (сек)", 1f, 10f, 1, () -> c.targetShowSec, v -> c.targetShowSec = v));
 
-        Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> c.totemEnabled = v);
+        Module crit = mod(combat, "Крит-эффект", () -> c.critEnabled, v -> c.critEnabled = v);
+        crit.opts.add(new Widgets.Choice("Когда", new String[]{"Только крит", "Каждый удар"}, () -> c.critMode, i -> c.critMode = i));
+        crit.opts.add(new Widgets.Choice("Форма", new String[]{"Звёзды", "Шарики", "Сердечки", "Микс"}, () -> c.critShape, i -> c.critShape = i));
+        crit.opts.add(new Widgets.Slider("Количество", 5, 100, 0, () -> (float) c.critCount, v -> c.critCount = Math.round(v)));
+        crit.opts.add(new Widgets.Slider("Размер", 0.08f, 0.6f, 2, () -> c.critSize, v -> c.critSize = v));
+
+        Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
         totem.opts.add(new Widgets.Header("Перетащи PNG в окно игры"));
+        totem.opts.add(new Widgets.Choice("Разрешение", new String[]{"64", "128", "256", "512"}, () -> c.totemRes, i -> {
+            c.totemRes = i;
+            Totem.regenerate();
+        }));
         totem.opts.add(new Widgets.Action("Взять config/myvisuals/totem.png", Totem::loadFromConfigDir));
-        totem.opts.add(new Widgets.Action("Сбросить (перезагрузка)", Totem::reset));
+        totem.opts.add(new Widgets.Action("Сбросить тотем", Totem::reset));
 
         // ---- Visuals ----
         Category vis = cat("Visuals");
@@ -148,6 +146,15 @@ public class VisualsScreen extends Screen {
         Module col = mod(vis, "Цвет эффектов", null, null);
         col.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.fxRainbow, v -> c.fxRainbow = v));
         col.opts.add(new Widgets.HueSlider("Оттенок", () -> c.fxHue, v -> c.fxHue = v));
+
+        Module combo = mod(vis, "Комбо", () -> c.comboEnabled, v -> c.comboEnabled = v);
+        combo.opts.add(new Widgets.Header("10: cool, 20: holy shit, 30: unstoppable"));
+        combo.opts.add(new Widgets.Slider("Размер", 0.5f, 3f, 2, () -> c.comboSize, v -> c.comboSize = v));
+        combo.opts.add(new Widgets.Slider("Время жизни (сек)", 0.8f, 4f, 1, () -> c.comboLife, v -> c.comboLife = v));
+        combo.opts.add(new Widgets.Slider("Сброс через (сек)", 1f, 6f, 1, () -> c.comboReset, v -> c.comboReset = v));
+        combo.opts.add(new Widgets.Toggle("Сброс при уроне", () -> c.comboResetOnHurt, v -> c.comboResetOnHurt = v));
+        combo.opts.add(new Widgets.Toggle("Огонь после 20", () -> c.comboFire, v -> c.comboFire = v));
+        combo.opts.add(new Widgets.Toggle("Только игроки", () -> c.comboPlayersOnly, v -> c.comboPlayersOnly = v));
 
         Module arm = mod(vis, "Броня (HUD)", () -> c.hudArmor.enabled, v -> c.hudArmor.enabled = v);
         arm.opts.add(new Widgets.Header("Перетаскивай мышью"));
@@ -174,17 +181,30 @@ public class VisualsScreen extends Screen {
         haze.opts.add(new Widgets.Slider("Дальность", 30, 400, 0, () -> c.hazeDist, v -> c.hazeDist = v));
         haze.opts.add(new Widgets.Slider("Густота", 0.1f, 1f, 2, () -> c.hazeDensity, v -> c.hazeDensity = v));
 
+        Module sky = mod(world, "Небо", () -> c.skyEnabled, v -> c.skyEnabled = v);
+        sky.opts.add(new Widgets.Choice("Стиль", SkyFx.STYLES, () -> c.skyStyle, i -> c.skyStyle = i));
+        sky.opts.add(new Widgets.Slider("Вращение", 0f, 2f, 2, () -> c.skySpin, v -> c.skySpin = v));
+        sky.opts.add(new Widgets.Slider("Яркость", 0.3f, 1f, 2, () -> c.skyBright, v -> c.skyBright = v));
+
         // ---- Effects ----
         Category fx = cat("Effects");
-        fallMod(fx, "Неоновый дождь", c.rain, true, c);
-        fallMod(fx, "Падающие звёзды", c.stars, false, c);
-        fallMod(fx, "Сердечки", c.hearts, false, c);
-        fallMod(fx, "Конфетти", c.confetti, false, c);
+        Module wfx = mod(fx, "Эффекты мира", null, null);
+        wfx.opts.add(new Widgets.Choice("Эффект", new String[]{"Выкл", "Неоновый дождь", "Звёзды", "Сердечки", "Конфетти"},
+                () -> c.worldFx, i -> c.worldFx = i));
+        wfx.opts.add(new Widgets.Slider("Скорость", 0.2f, 4f, 2, () -> c.sel().speed, v -> c.sel().speed = v));
+        wfx.opts.add(new Widgets.Slider("Частота", 1, 40, 0, () -> (float) c.sel().freq, v -> c.sel().freq = Math.round(v)));
+        wfx.opts.add(new Widgets.Slider("Плотность", 20, 2000, 0, () -> (float) c.sel().density, v -> c.sel().density = Math.round(v)));
+        wfx.opts.add(new Widgets.Slider("Размер", 0.08f, 0.8f, 2, () -> c.sel().size, v -> c.sel().size = v));
+        wfx.opts.add(new Widgets.Slider("Длина капель", 0.3f, 3f, 2, () -> c.rainLength, v -> c.rainLength = v));
+        wfx.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.wxRainbow, v -> c.wxRainbow = v));
+        wfx.opts.add(new Widgets.HueSlider("Оттенок", () -> c.wxHue, v -> c.wxHue = v));
+
         Module splash = mod(fx, "Круги от падений", () -> c.splashRings, v -> c.splashRings = v);
         splash.opts.add(new Widgets.Slider("Размер", 0.3f, 2f, 2, () -> c.splashSize, v -> c.splashSize = v));
-        Module wcol = mod(fx, "Цвет эффектов", null, null);
-        wcol.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.wxRainbow, v -> c.wxRainbow = v));
-        wcol.opts.add(new Widgets.HueSlider("Оттенок", () -> c.wxHue, v -> c.wxHue = v));
+
+        Module shake = mod(fx, "Анти-тряска", () -> c.antiShake, v -> c.antiShake = v);
+        shake.opts.add(new Widgets.Header("Убирает тряску камеры при уроне"));
+        shake.opts.add(new Widgets.Toggle("Без покачивания при ходьбе", () -> c.antiBob, v -> c.antiBob = v));
 
         // ---- Interface ----
         Category ui = cat("Interface");

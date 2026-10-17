@@ -8,6 +8,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.texture.Sprite;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.item.ItemStack;
@@ -42,13 +43,14 @@ public final class Hud {
             if (world.isClient && entity instanceof LivingEntity) {
                 target = entity;
                 targetTime = System.currentTimeMillis();
+                WorldRender.onAttack(entity);
             }
             return ActionResult.PASS;
         });
     }
 
     private static int baseW(int id) {
-        return id == 0 ? 132 : (id == 1 ? 96 : 118);
+        return id == 0 ? 150 : (id == 1 ? 96 : 118);
     }
 
     private static int baseH(int id) {
@@ -107,12 +109,11 @@ public final class Hud {
 
         TextRenderer tr = mc.textRenderer;
         float a = alphaDisp;
-        int W = 132, H = baseH(0);
+        int W = 150, H = baseH(0);
         push(c, 0, sw, sh);
-        Ui.rr(c, 0, 0, W, H, 6, Ui.col(Ui.bgColor(), 0.82f * a));
-        c.fill(0, 6, 3, H - 6, Ui.col(Ui.accent(), a));
+        Ui.rr(c, 0, 0, W, H, Math.min(12, H / 2), Ui.col(Ui.bgColor(), 0.85f * a));
 
-        int size = H - 12, hx = 8, hy = 6;
+        int size = H - 12, hx = 6, hy = 6;
         Identifier tex = null;
         if (le instanceof AbstractClientPlayerEntity pl) tex = pl.getSkinTextures().texture();
         if (tex != null) {
@@ -123,16 +124,41 @@ public final class Hud {
             c.drawText(tr, "?", hx + size / 2 - 2, hy + size / 2 - 4, Ui.col(0xFFFFFF, a), false);
         }
 
-        int tx = hx + size + 6;
-        String hpText = String.format(Locale.ROOT, "%.1f", hp);
-        String name = tr.trimToWidth(le.getName().getString(), W - tx - tr.getWidth(hpText) - 12);
+        int tx = hx + size + 7;
+        String name = tr.trimToWidth(le.getName().getString(), W - tx - 44);
         c.drawText(tr, name, tx, 7, Ui.col(0xFFFFFF, a), false);
-        c.drawText(tr, hpText, W - 8 - tr.getWidth(hpText), 7, Ui.col(Ui.mix(0xFF4040, 0x40FF70, ratio), a), false);
 
-        int bw = W - tx - 8, by = H - 14;
-        Ui.rr(c, tx, by, tx + bw, by + 6, 3, Ui.col(0x000000, 0.5f * a));
-        Ui.rr(c, tx, by, tx + Math.max(3, Math.round(bw * ratio)), by + 6, 3,
-                Ui.col(Ui.mix(0xFF4040, 0x40FF70, ratio), a));
+        // 6 слотов экипировки: шлем, нагрудник, поножи, ботинки, рука, вторая рука
+        EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS,
+                EquipmentSlot.FEET, EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND};
+        int ey = H - 17;
+        for (int i = 0; i < slots.length; i++) {
+            ItemStack st = le.getEquippedStack(slots[i]);
+            int ex = tx + i * 11;
+            if (st.isEmpty()) {
+                c.drawText(tr, "x", ex + 2, ey + 1, Ui.col(0xFFFFFF, 0.35f * a), false);
+            } else {
+                c.getMatrices().push();
+                c.getMatrices().translate(ex, ey, 0);
+                c.getMatrices().scale(0.6f, 0.6f, 1f);
+                c.drawItem(st, 0, 0);
+                c.getMatrices().pop();
+            }
+        }
+
+        // круг со здоровьем справа
+        int cx = W - 20, cy = H / 2, seg = 36;
+        float rad = 14f;
+        int hpCol = Ui.mix(0xFF4040, 0x40FF70, ratio);
+        int filled = Math.round(seg * ratio);
+        for (int i = 0; i < seg; i++) {
+            double ang = -Math.PI / 2 + i * Math.PI * 2 / seg;
+            int px = cx + (int) Math.round(Math.cos(ang) * rad);
+            int py = cy + (int) Math.round(Math.sin(ang) * rad);
+            c.fill(px - 1, py - 1, px + 1, py + 1, Ui.col(i < filled ? hpCol : 0x3A3A48, a));
+        }
+        String hn = String.valueOf(Math.round(hpDisp));
+        c.drawText(tr, hn, cx - tr.getWidth(hn) / 2, cy - 4, Ui.col(0xFFFFFF, a), false);
         c.getMatrices().pop();
     }
 
