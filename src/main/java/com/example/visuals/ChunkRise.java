@@ -13,7 +13,10 @@ public class ChunkRise {
     private static ClientWorld lastWorld = null;
     private static long lastClean = 0;
 
-    /** Смещение по Y (отрицательное) для секции чанка, которая только что появилась. */
+    /**
+     * Смещение по Y для секции чанка. Дальше выбранной дистанции чанк "утоплен",
+     * при входе в дистанцию он плавно поднимается.
+     */
     public static float offset(float fx, float fy, float fz) {
         Config c = Config.I;
         if (!c.chunkAnim) return 0f;
@@ -37,6 +40,13 @@ public class ChunkRise {
                 BlockPos bp = BlockPos.fromLong(k);
                 return Math.abs(bp.getX() - cam.x) > lim || Math.abs(bp.getZ() - cam.z) > lim;
             });
+        }
+
+        double dx = Math.abs(ox + 8 - cam.x), dz = Math.abs(oz + 8 - cam.z);
+        float distChunks = (float) (Math.max(dx, dz) / 16.0);
+        if (distChunks > c.chunkDist) {
+            seen.remove(key);
+            return -c.chunkDepth;
         }
 
         Long t0 = seen.get(key);

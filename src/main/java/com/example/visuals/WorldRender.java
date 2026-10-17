@@ -40,25 +40,57 @@ public class WorldRender {
         }
     }
 
+    private static class Ring {
+        final double x, y, z;
+        final long t0, dur;
+        final float maxR;
+        final int rgb; // -1 = градиент цвета эффектов
+        final boolean splash;
+
+        Ring(double x, double y, double z, long t0, float maxR, long dur, int rgb, boolean splash) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.t0 = t0;
+            this.maxR = maxR;
+            this.dur = dur;
+            this.rgb = rgb;
+            this.splash = splash;
+        }
+    }
+
     private static class Drop {
         float x, y, z, vy, seed, ground;
-        boolean star;
+        int type; // 0 дождь, 1 звезда, 2 сердце, 3 конфетти
         int age;
     }
 
     private static final ArrayDeque<Pt> trail = new ArrayDeque<>();
-    private static final List<Pt> circles = new ArrayList<>();
+    private static final List<Ring> rings = new ArrayList<>();
     private static final List<Drop> drops = new ArrayList<>();
     private static final Random RNG = new Random();
     private static boolean wasGround = true;
-    private static final long CIRCLE_MS = 900;
+    private static int airTicks = 0;
+
+    private static final float[] HX = new float[24];
+    private static final float[] HY = new float[24];
+
+    static {
+        for (int i = 0; i < 24; i++) {
+            double t = i * Math.PI * 2 / 24;
+            double x = 16 * Math.pow(Math.sin(t), 3);
+            double y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            HX[i] = (float) (x / 17.0);
+            HY[i] = (float) (y / 17.0);
+        }
+    }
 
     // ================= логика (раз в тик) =================
     public static void tick(MinecraftClient mc) {
         ClientPlayerEntity p = mc.player;
         if (p == null || mc.world == null) {
             trail.clear();
-            circles.clear();
+            rings.clear();
             drops.clear();
             return;
         }
@@ -81,38 +113,41 @@ public class WorldRender {
         long lifeMs = (long) (c.ribbonLife * 1000);
         while (!trail.isEmpty() && now - trail.peekFirst().t > lifeMs) trail.pollFirst();
 
-        // круги при прыжке
+        // круги: прыжок / приземление
         boolean ground = p.isOnGround();
-        if (c.jumpEnabled && wasGround && !ground && p.getVelocity().y > 0.1) {
-            circles.add(new Pt(p.getX(), p.getY(), p.getZ(), now));
+        if (!ground) airTicks++;
+        if (c.jumpEnabled) {
+            boolean takeoff = wasGround && !ground && p.getVelocity().y > 0.1;
+            boolean landing = !wasGround && ground && airTicks >= 4;
+            if ((takeoff && (c.jumpMode == 0 || c.jumpMode == 2)) || (landing && (c.jumpMode == 1 || c.jumpMode == 2))) {
+                rings.add(new Ring(p.getX(), p.getY() + 0.03, p.getZ(), now, c.jumpSize, 900, -1, false));
+            }
         }
+        if (ground) airTicks = 0;
         wasGround = ground;
-        circles.removeIf(ci -> now - ci.t > CIRCLE_MS);
+        rings.removeIf(r -> now - r.t0 > r.dur);
 
-        // дождь и звёзды
-        if (c.rainEnabled || c.starsEnabled || !drops.isEmpty()) {
-            tickDrops(mc, p, c);
-        }
+        // падающие эффекты
+        boolean anyFall = c.rain.enabled || c.stars.enabled || c.hearts.enabled || c.confetti.enabled;
+        if (anyFall || !drops.isEmpty()) tickDrops(mc, p, c, now);
     }
 
     private static double sq(double v) {
         return v * v;
     }
 
-    private static void tickDrops(MinecraftClient mc, ClientPlayerEntity p, Config c) {
-        int rain = 0, stars = 0;
-        for (Drop d : drops) {
-            if (d.star) stars++;
-            else rain++;
-        }
-        if (c.rainEnabled) {
-            for (int i = 0; i < c.rainFreq && rain < c.rainDensity; i++) {
-                if (spawn(mc.world, p, false)) rain++;
-            }
-        }
-        if (c.starsEnabled) {
-            for (int i = 0; i < c.starFreq && stars < c.starDensity; i++) {
-                if (spawn(mc.world, p, true)) stars++;
+    private static final float[] BASE_SPEED = {0.7f, 0.06f, 0.05f, 0.045f};
+    private static final float[] SPLASH_CHANCE = {0.12f, 0.5f, 0.5f, 0.4f};
+    private static final float[] SPLASH_SIZE = {0.5f, 1.0f, 1.0f, 0.7f};
+
+    private static void tickDrops(MinecraftClient mc, ClientPlayerEntity p, Config c, long now) {
+        Config.Fall[] f = {c.rain, c.stars, c.hearts, c.confetti};
+        int[] count = new int[4];
+        for (Drop d : drops) count[d.type]++;
+        for (int t = 0; t < 4; t++) {
+            if (!f[t].enabled) continue;
+            for (int i = 0; i < f[t].freq && count[t] < f[t].density; i++) {
+                if (spawn(mc.world, p, t)) count[t]++;
             }
         }
 
@@ -120,33 +155,46 @@ public class WorldRender {
         while (it.hasNext()) {
             Drop d = it.next();
             d.age++;
-            boolean off = d.star ? !c.starsEnabled : !c.rainEnabled;
-            d.vy = -(d.star ? 0.06f * c.starSpeed : 0.7f * c.rainSpeed) * (0.85f + 0.3f * d.seed);
+            boolean off = !f[d.type].enabled;
+            d.vy = -BASE_SPEED[d.type] * f[d.type].speed * (0.85f + 0.3f * d.seed);
             d.y += d.vy;
-            if (d.star) {
-                d.x += (float) Math.cos(d.age * 0.07f + d.seed * 6.28f) * 0.012f;
-                d.z += (float) Math.sin(d.age * 0.05f + d.seed * 6.28f) * 0.012f;
+            if (d.type != 0) {
+                float sway = d.type == 3 ? 0.02f : 0.012f;
+                d.x += (float) Math.cos(d.age * 0.07f + d.seed * 6.28f) * sway;
+                d.z += (float) Math.sin(d.age * 0.05f + d.seed * 6.28f) * sway;
             }
             float dx = d.x - (float) p.getX(), dz = d.z - (float) p.getZ();
-            if (off || d.y <= d.ground || dx * dx + dz * dz > 34 * 34) it.remove();
+            if (off || dx * dx + dz * dz > 36 * 36) {
+                it.remove();
+                continue;
+            }
+            if (d.y <= d.ground) {
+                if (c.splashRings && rings.size() < 300 && RNG.nextFloat() < SPLASH_CHANCE[d.type]) {
+                    int rgb = hsb(c.wxRainbow, c.wxHue, d.seed);
+                    rings.add(new Ring(d.x, d.ground + 0.03, d.z, now, c.splashSize * SPLASH_SIZE[d.type], 650, rgb, true));
+                }
+                it.remove();
+            }
         }
     }
 
-    private static boolean spawn(ClientWorld w, ClientPlayerEntity p, boolean star) {
+    private static boolean spawn(ClientWorld w, ClientPlayerEntity p, int type) {
         double ang = RNG.nextDouble() * Math.PI * 2;
-        double r = Math.sqrt(RNG.nextDouble()) * 18;
-        double x = p.getX() + Math.cos(ang) * r;
-        double z = p.getZ() + Math.sin(ang) * r;
-        double y = p.getY() + 9 + RNG.nextDouble() * 8;
+        double r = Math.sqrt(RNG.nextDouble()) * 26;
+        Vec3d v = p.getVelocity();
+        double x = p.getX() + Math.cos(ang) * r + v.x * RNG.nextDouble() * 25;
+        double z = p.getZ() + Math.sin(ang) * r + v.z * RNG.nextDouble() * 25;
         int ground = w.getTopY(Heightmap.Type.MOTION_BLOCKING, (int) Math.floor(x), (int) Math.floor(z));
-        if (ground >= y) return false;
+        double top = p.getY() + 16;
+        double lo = Math.max(ground, p.getY() - 8);
+        if (lo >= top) return false;
         Drop d = new Drop();
         d.x = (float) x;
-        d.y = (float) y;
+        d.y = (float) (lo + RNG.nextDouble() * (top - lo));
         d.z = (float) z;
         d.seed = RNG.nextFloat();
         d.ground = ground;
-        d.star = star;
+        d.type = type;
         drops.add(d);
         return true;
     }
@@ -164,6 +212,13 @@ public class WorldRender {
         return (al << 24) | (rgb & 0xFFFFFF);
     }
 
+    private static int mixWhite(int rgb, float t) {
+        int r = (int) (((rgb >> 16) & 255) * (1 - t) + 255 * t);
+        int g = (int) (((rgb >> 8) & 255) * (1 - t) + 255 * t);
+        int bl = (int) ((rgb & 255) * (1 - t) + 255 * t);
+        return (r << 16) | (g << 8) | bl;
+    }
+
     private static BufferBuilder begin(VertexFormat.DrawMode mode) {
         return Tessellator.getInstance().begin(mode, VertexFormats.POSITION_COLOR);
     }
@@ -177,6 +232,12 @@ public class WorldRender {
         b.vertex(m, x, y, z).color(color);
     }
 
+    /** Вершина в плоскости камеры: центр + right*u + up*v. */
+    private static void pv(BufferBuilder b, Matrix4f m, float cx, float cy, float cz,
+                           Vector3f right, Vector3f up, float u, float v, int color) {
+        vtx(b, m, cx + right.x * u + up.x * v, cy + right.y * u + up.y * v, cz + right.z * u + up.z * v, color);
+    }
+
     // ================= отрисовка =================
     public static void render(WorldRenderContext ctx) {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -186,7 +247,7 @@ public class WorldRender {
         if (ms == null) return;
         Config c = Config.I;
         boolean anything = c.ribbonEnabled || c.jumpEnabled || c.hatEnabled || c.haloEnabled
-                || c.rainEnabled || c.starsEnabled || !drops.isEmpty();
+                || !drops.isEmpty() || !rings.isEmpty();
         if (!anything) return;
 
         Vec3d cp = ctx.camera().getPos();
@@ -208,7 +269,7 @@ public class WorldRender {
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
         if (c.ribbonEnabled) drawRibbon(m, c, px, py, pz, now);
-        if (c.jumpEnabled) drawCircles(m, c, now);
+        if (!rings.isEmpty()) drawRings(m, c, now);
         double top = py + p.getHeight();
         if (c.hatEnabled && !first) drawHat(m, c, px, top, pz);
         if (c.haloEnabled && !first) drawHalo(m, c, px, top, pz, now);
@@ -220,8 +281,7 @@ public class WorldRender {
             Vector3f rh = new Vector3f(right.x, 0, right.z);
             if (rh.lengthSquared() > 1e-6f) rh.normalize();
             else rh.set(1, 0, 0);
-            drawRain(m, c, td, rh);
-            drawStars(m, c, td, right, up, rh);
+            drawDrops(m, c, td, right, up, rh);
         }
 
         RenderSystem.depthMask(true);
@@ -230,19 +290,81 @@ public class WorldRender {
         ms.pop();
     }
 
-    // ---------- неоновый дождь ----------
-    private static void drawRain(Matrix4f m, Config c, float td, Vector3f rh) {
-        BufferBuilder b = null;
+    // ---------- все падающие штуки одним буфером ----------
+    private static void drawDrops(Matrix4f m, Config c, float td, Vector3f right, Vector3f up, Vector3f rh) {
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
         for (Drop d : drops) {
-            if (d.star) continue;
-            if (b == null) b = begin(VertexFormat.DrawMode.TRIANGLES);
             float y = d.y + d.vy * td;
             int rgb = hsb(c.wxRainbow, c.wxHue, d.seed);
-            float len = c.rainLength * (0.8f + 0.4f * d.seed);
-            quad(b, m, d.x, y, d.z, rh, 0.012f, len, argb(rgb, 0.95f), argb(rgb, 0f));
-            quad(b, m, d.x, y, d.z, rh, 0.05f, len, argb(rgb, 0.16f), argb(rgb, 0f));
+            float ph = d.age + td;
+            switch (d.type) {
+                case 0: {
+                    float len = c.rainLength * (0.8f + 0.4f * d.seed);
+                    quad(b, m, d.x, y, d.z, rh, 0.012f, len, argb(rgb, 0.95f), argb(rgb, 0f));
+                    quad(b, m, d.x, y, d.z, rh, 0.05f, len, argb(rgb, 0.16f), argb(rgb, 0f));
+                    break;
+                }
+                case 1: {
+                    float s = c.stars.size * (0.7f + 0.6f * d.seed);
+                    int white = mixWhite(rgb, 0.6f);
+                    glow(b, m, d.x, y, d.z, right, up, s * 2.4f, rgb, 0.35f);
+                    quad(b, m, d.x, y, d.z, rh, s * 0.12f, s * 5f, argb(rgb, 0.55f), argb(rgb, 0f));
+                    float rot = ph * 0.08f + d.seed * 6.28f;
+                    for (int k = 0; k < 8; k++) {
+                        float r1 = (k % 2 == 0) ? s : s * 0.38f;
+                        float r2 = ((k + 1) % 2 == 0) ? s : s * 0.38f;
+                        float a1 = rot + k * (float) Math.PI / 4f;
+                        float a2 = rot + (k + 1) * (float) Math.PI / 4f;
+                        pv(b, m, d.x, y, d.z, right, up, 0, 0, argb(white, 1f));
+                        pv(b, m, d.x, y, d.z, right, up, (float) Math.cos(a1) * r1, (float) Math.sin(a1) * r1, argb(rgb, 0.9f));
+                        pv(b, m, d.x, y, d.z, right, up, (float) Math.cos(a2) * r2, (float) Math.sin(a2) * r2, argb(rgb, 0.9f));
+                    }
+                    break;
+                }
+                case 2: {
+                    float s = c.hearts.size * (0.7f + 0.6f * d.seed);
+                    float ang = (float) Math.sin(ph * 0.08f + d.seed * 6f) * 0.35f;
+                    float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
+                    int light = mixWhite(rgb, 0.35f);
+                    glow(b, m, d.x, y, d.z, right, up, s * 1.9f, rgb, 0.22f);
+                    for (int i = 0; i < 24; i++) {
+                        int j = (i + 1) % 24;
+                        float ux1 = HX[i] * s, vy1 = HY[i] * s, ux2 = HX[j] * s, vy2 = HY[j] * s;
+                        pv(b, m, d.x, y, d.z, right, up, 0, 0, argb(light, 0.95f));
+                        pv(b, m, d.x, y, d.z, right, up, ux1 * ca - vy1 * sa, ux1 * sa + vy1 * ca, argb(rgb, 0.9f));
+                        pv(b, m, d.x, y, d.z, right, up, ux2 * ca - vy2 * sa, ux2 * sa + vy2 * ca, argb(rgb, 0.9f));
+                    }
+                    break;
+                }
+                default: {
+                    float s = c.confetti.size * (0.8f + 0.5f * d.seed);
+                    float rot = ph * 0.12f + d.seed * 6.28f;
+                    float wob = Math.abs((float) Math.cos(ph * 0.15f + d.seed * 7f));
+                    float hw = Math.max(0.08f, wob) * s * 0.7f, hh = s * 1.1f;
+                    float cr = (float) Math.cos(rot), sr = (float) Math.sin(rot);
+                    float[] cx = {-hw, hw, hw, -hw};
+                    float[] cy = {-hh, -hh, hh, hh};
+                    int col = argb(rgb, 0.95f);
+                    int[] order = {0, 1, 2, 0, 2, 3};
+                    for (int idx : order) {
+                        pv(b, m, d.x, y, d.z, right, up, cx[idx] * cr - cy[idx] * sr, cx[idx] * sr + cy[idx] * cr, col);
+                    }
+                    break;
+                }
+            }
         }
-        if (b != null) end(b);
+        end(b);
+    }
+
+    private static void glow(BufferBuilder b, Matrix4f m, float x, float y, float z, Vector3f right, Vector3f up,
+                             float radius, int rgb, float alpha) {
+        int seg = 10;
+        for (int i = 0; i < seg; i++) {
+            double a1 = i * Math.PI * 2 / seg, a2 = (i + 1) * Math.PI * 2 / seg;
+            pv(b, m, x, y, z, right, up, 0, 0, argb(rgb, alpha));
+            pv(b, m, x, y, z, right, up, (float) Math.cos(a1) * radius, (float) Math.sin(a1) * radius, argb(rgb, 0f));
+            pv(b, m, x, y, z, right, up, (float) Math.cos(a2) * radius, (float) Math.sin(a2) * radius, argb(rgb, 0f));
+        }
     }
 
     private static void quad(BufferBuilder b, Matrix4f m, float x, float y, float z, Vector3f rh,
@@ -257,56 +379,46 @@ public class WorldRender {
         vtx(b, m, ax, y + len, az, topc);
     }
 
-    // ---------- падающие звёзды ----------
-    private static void drawStars(Matrix4f m, Config c, float td, Vector3f right, Vector3f up, Vector3f rh) {
-        BufferBuilder b = null;
-        for (Drop d : drops) {
-            if (!d.star) continue;
-            if (b == null) b = begin(VertexFormat.DrawMode.TRIANGLES);
-            float cy = d.y + d.vy * td;
-            float s = c.starSize * (0.7f + 0.6f * d.seed);
-            int rgb = hsb(c.wxRainbow, c.wxHue, d.seed);
-            int white = mixWhite(rgb, 0.6f);
-
-            // свечение
-            int seg = 12;
-            float gr = s * 2.4f;
+    // ---------- круги (прыжок, приземление, падения) ----------
+    private static void drawRings(Matrix4f m, Config c, long now) {
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
+        boolean any = false;
+        for (Ring r : rings) {
+            float t = (now - r.t0) / (float) r.dur;
+            if (t < 0f || t > 1f) continue;
+            any = true;
+            float e = 1f - (1f - t) * (1f - t) * (1f - t);
+            float rad = 0.2f + (r.maxR - 0.2f) * e;
+            float a = 1f - t;
+            float inner = rad * 0.8f;
+            float y = (float) r.y;
+            int seg = r.splash ? 20 : 48;
             for (int i = 0; i < seg; i++) {
                 double a1 = i * Math.PI * 2 / seg, a2 = (i + 1) * Math.PI * 2 / seg;
-                vtx(b, m, d.x, cy, d.z, argb(rgb, 0.35f));
-                vtx(b, m, d.x + (right.x * (float) Math.cos(a1) + up.x * (float) Math.sin(a1)) * gr,
-                        cy + (right.y * (float) Math.cos(a1) + up.y * (float) Math.sin(a1)) * gr,
-                        d.z + (right.z * (float) Math.cos(a1) + up.z * (float) Math.sin(a1)) * gr, argb(rgb, 0f));
-                vtx(b, m, d.x + (right.x * (float) Math.cos(a2) + up.x * (float) Math.sin(a2)) * gr,
-                        cy + (right.y * (float) Math.cos(a2) + up.y * (float) Math.sin(a2)) * gr,
-                        d.z + (right.z * (float) Math.cos(a2) + up.z * (float) Math.sin(a2)) * gr, argb(rgb, 0f));
-            }
-
-            // хвост
-            quad(b, m, d.x, cy, d.z, rh, s * 0.12f, s * 5f, argb(rgb, 0.55f), argb(rgb, 0f));
-
-            // сама звезда (4 луча)
-            float rot = (d.age + td) * 0.08f + d.seed * 6.28f;
-            for (int k = 0; k < 8; k++) {
-                float r1 = (k % 2 == 0) ? s : s * 0.38f;
-                float r2 = ((k + 1) % 2 == 0) ? s : s * 0.38f;
-                float a1 = rot + k * (float) Math.PI / 4f;
-                float a2 = rot + (k + 1) * (float) Math.PI / 4f;
-                float c1 = (float) Math.cos(a1) * r1, s1 = (float) Math.sin(a1) * r1;
-                float c2 = (float) Math.cos(a2) * r2, s2 = (float) Math.sin(a2) * r2;
-                vtx(b, m, d.x, cy, d.z, argb(white, 1f));
-                vtx(b, m, d.x + right.x * c1 + up.x * s1, cy + right.y * c1 + up.y * s1, d.z + right.z * c1 + up.z * s1, argb(rgb, 0.9f));
-                vtx(b, m, d.x + right.x * c2 + up.x * s2, cy + right.y * c2 + up.y * s2, d.z + right.z * c2 + up.z * s2, argb(rgb, 0.9f));
+                float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+                float c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
+                int rgb1 = r.rgb >= 0 ? r.rgb : hsb(c.fxRainbow, c.fxHue, i / (float) seg);
+                int rgb2 = r.rgb >= 0 ? r.rgb : hsb(c.fxRainbow, c.fxHue, (i + 1) / (float) seg);
+                int in1 = argb(rgb1, a * 0.1f), out1 = argb(rgb1, a * 0.95f);
+                int in2 = argb(rgb2, a * 0.1f), out2 = argb(rgb2, a * 0.95f);
+                float x = (float) r.x, z = (float) r.z;
+                vtx(b, m, x + c1 * inner, y, z + s1 * inner, in1);
+                vtx(b, m, x + c1 * rad, y, z + s1 * rad, out1);
+                vtx(b, m, x + c2 * rad, y, z + s2 * rad, out2);
+                vtx(b, m, x + c1 * inner, y, z + s1 * inner, in1);
+                vtx(b, m, x + c2 * rad, y, z + s2 * rad, out2);
+                vtx(b, m, x + c2 * inner, y, z + s2 * inner, in2);
             }
         }
-        if (b != null) end(b);
-    }
-
-    private static int mixWhite(int rgb, float t) {
-        int r = (int) (((rgb >> 16) & 255) * (1 - t) + 255 * t);
-        int g = (int) (((rgb >> 8) & 255) * (1 - t) + 255 * t);
-        int bl = (int) ((rgb & 255) * (1 - t) + 255 * t);
-        return (r << 16) | (g << 8) | bl;
+        if (any) {
+            end(b);
+        } else {
+            // пустой буфер всё равно нужно закрыть
+            vtx(b, m, 0, -1000, 0, 0);
+            vtx(b, m, 0, -1000, 0, 0);
+            vtx(b, m, 0, -1000, 0, 0);
+            end(b);
+        }
     }
 
     // ---------- лента ----------
@@ -338,28 +450,6 @@ public class WorldRender {
             b.vertex(m, (float) x, (float) (y + h), (float) z).color(argb(rgb, a * 0.1f));
         }
         end(b);
-    }
-
-    // ---------- круги при прыжке ----------
-    private static void drawCircles(Matrix4f m, Config c, long now) {
-        int seg = 48;
-        for (Pt ci : new ArrayList<>(circles)) {
-            float t = (now - ci.t) / (float) CIRCLE_MS;
-            if (t < 0f || t > 1f) continue;
-            float e = 1f - (1f - t) * (1f - t) * (1f - t);
-            float r = 0.3f + (c.jumpSize - 0.3f) * e;
-            float a = 1f - t;
-            float y = (float) ci.y + 0.03f;
-            BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLE_STRIP);
-            for (int i = 0; i <= seg; i++) {
-                double ang = i * Math.PI * 2 / seg;
-                float cos = (float) Math.cos(ang), sin = (float) Math.sin(ang);
-                int rgb = hsb(c.fxRainbow, c.fxHue, i / (float) seg);
-                b.vertex(m, (float) ci.x + cos * r * 0.8f, y, (float) ci.z + sin * r * 0.8f).color(argb(rgb, a * 0.1f));
-                b.vertex(m, (float) ci.x + cos * r, y, (float) ci.z + sin * r).color(argb(rgb, a * 0.95f));
-            }
-            end(b);
-        }
     }
 
     // ---------- китайская шляпа ----------

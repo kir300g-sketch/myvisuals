@@ -14,6 +14,7 @@ public class VisualsClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         Config.load();
+        Hud.register();
 
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.myvisuals.menu",
@@ -28,8 +29,8 @@ public class VisualsClient implements ClientModInitializer {
                     client.setScreen(new VisualsScreen());
                 }
             }
-            Effects.tick(client);
             WorldRender.tick(client);
+            Totem.tick(client);
         });
 
         WorldRenderEvents.AFTER_TRANSLUCENT.register(WorldRender::render);
