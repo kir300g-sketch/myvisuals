@@ -99,6 +99,35 @@ public class Config {
     public int critCount = 30;
     public float critSize = 0.2f;
 
+    // Цвета отдельных эффектов
+    public boolean circRainbow = true;
+    public float circHue = 0.75f;
+    public boolean hatRainbow = true;
+    public float hatHue = 0.75f;
+    public boolean haloRainbow = true;
+    public float haloHue = 0.12f;
+    public boolean critRainbow = true;
+    public float critHue = 0.08f;
+    public boolean bloodRainbow = false;
+    public float bloodHue = 0.0f;
+
+    // Крит-эффект: какой именно (0 частицы, 1 кровь, 2 искры, 3 ударная волна)
+    public int critFx = 0;
+
+    // Комбо: дополнительные настройки
+    public boolean comboCritOnly = true;
+    public int comboColorMode = 0; // 0 авто, 1 радуга, 2 свой цвет
+    public float comboHue = 0.9f;
+
+    // Эффект убийства и счётчик
+    public boolean killEnabled = false;
+    public int killFx = 1; // 0 нет, 1 коса
+    public float killSize = 1f;
+    public boolean killRainbow = false;
+    public float killHue = 0.38f;
+    public boolean killCounter = true;
+    public int killCount = 0;
+
     // Комбо
     public boolean comboEnabled = false;
     public float comboSize = 1.2f;

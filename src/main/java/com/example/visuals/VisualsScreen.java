@@ -112,10 +112,27 @@ public class VisualsScreen extends Screen {
         th.opts.add(new Widgets.Slider("Время показа (сек)", 1f, 10f, 1, () -> c.targetShowSec, v -> c.targetShowSec = v));
 
         Module crit = mod(combat, "Крит-эффект", () -> c.critEnabled, v -> c.critEnabled = v);
+        crit.opts.add(new Widgets.Choice("Эффект", new String[]{"Частицы", "Кровь", "Искры", "Ударная волна"}, () -> c.critFx, i -> c.critFx = i));
         crit.opts.add(new Widgets.Choice("Когда", new String[]{"Только крит", "Каждый удар"}, () -> c.critMode, i -> c.critMode = i));
-        crit.opts.add(new Widgets.Choice("Форма", new String[]{"Звёзды", "Шарики", "Сердечки", "Микс"}, () -> c.critShape, i -> c.critShape = i));
+        crit.opts.add(new Widgets.Choice("Форма частиц", new String[]{"Звёзды", "Шарики", "Сердечки", "Микс"}, () -> c.critShape, i -> c.critShape = i));
         crit.opts.add(new Widgets.Slider("Количество", 5, 100, 0, () -> (float) c.critCount, v -> c.critCount = Math.round(v)));
         crit.opts.add(new Widgets.Slider("Размер", 0.08f, 0.6f, 2, () -> c.critSize, v -> c.critSize = v));
+        crit.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.critRainbow, v -> c.critRainbow = v));
+        crit.opts.add(new Widgets.HueSlider("Цвет", () -> c.critHue, v -> c.critHue = v));
+        crit.opts.add(new Widgets.Toggle("Кровь радужная", () -> c.bloodRainbow, v -> c.bloodRainbow = v));
+        crit.opts.add(new Widgets.HueSlider("Цвет крови", () -> c.bloodHue, v -> c.bloodHue = v));
+
+        Module kill = mod(combat, "Эффект убийства", () -> c.killEnabled, v -> c.killEnabled = v);
+        kill.opts.add(new Widgets.Header(() -> "Убийств: " + c.killCount));
+        kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса"}, () -> c.killFx, i -> c.killFx = i));
+        kill.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.killSize, v -> c.killSize = v));
+        kill.opts.add(new Widgets.Toggle("Счётчик на месте смерти", () -> c.killCounter, v -> c.killCounter = v));
+        kill.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.killRainbow, v -> c.killRainbow = v));
+        kill.opts.add(new Widgets.HueSlider("Цвет", () -> c.killHue, v -> c.killHue = v));
+        kill.opts.add(new Widgets.Action("Сбросить счётчик", () -> {
+            c.killCount = 0;
+            Config.save();
+        }));
 
         Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
@@ -138,23 +155,29 @@ public class VisualsScreen extends Screen {
         Module circ = mod(vis, "Круги", () -> c.jumpEnabled, v -> c.jumpEnabled = v);
         circ.opts.add(new Widgets.Choice("Когда", new String[]{"Прыжок", "Приземление", "Оба"}, () -> c.jumpMode, i -> c.jumpMode = i));
         circ.opts.add(new Widgets.Slider("Размер", 0.8f, 3.5f, 1, () -> c.jumpSize, v -> c.jumpSize = v));
+        circ.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.circRainbow, v -> c.circRainbow = v));
+        circ.opts.add(new Widgets.HueSlider("Цвет", () -> c.circHue, v -> c.circHue = v));
 
         Module hat = mod(vis, "Китайская шляпа", () -> c.hatEnabled, v -> c.hatEnabled = v);
         hat.opts.add(new Widgets.Slider("Размер", 0.6f, 2f, 1, () -> c.hatSize, v -> c.hatSize = v));
-        mod(vis, "Нимб", () -> c.haloEnabled, v -> c.haloEnabled = v);
+        hat.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.hatRainbow, v -> c.hatRainbow = v));
+        hat.opts.add(new Widgets.HueSlider("Цвет", () -> c.hatHue, v -> c.hatHue = v));
 
-        Module col = mod(vis, "Цвет эффектов", null, null);
-        col.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.fxRainbow, v -> c.fxRainbow = v));
-        col.opts.add(new Widgets.HueSlider("Оттенок", () -> c.fxHue, v -> c.fxHue = v));
+        Module halo = mod(vis, "Нимб", () -> c.haloEnabled, v -> c.haloEnabled = v);
+        halo.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.haloRainbow, v -> c.haloRainbow = v));
+        halo.opts.add(new Widgets.HueSlider("Цвет", () -> c.haloHue, v -> c.haloHue = v));
 
         Module combo = mod(vis, "Комбо", () -> c.comboEnabled, v -> c.comboEnabled = v);
         combo.opts.add(new Widgets.Header("10: cool, 20: holy shit, 30: unstoppable"));
+        combo.opts.add(new Widgets.Toggle("Только криты", () -> c.comboCritOnly, v -> c.comboCritOnly = v));
         combo.opts.add(new Widgets.Slider("Размер", 0.5f, 3f, 2, () -> c.comboSize, v -> c.comboSize = v));
         combo.opts.add(new Widgets.Slider("Время жизни (сек)", 0.8f, 4f, 1, () -> c.comboLife, v -> c.comboLife = v));
         combo.opts.add(new Widgets.Slider("Сброс через (сек)", 1f, 6f, 1, () -> c.comboReset, v -> c.comboReset = v));
         combo.opts.add(new Widgets.Toggle("Сброс при уроне", () -> c.comboResetOnHurt, v -> c.comboResetOnHurt = v));
         combo.opts.add(new Widgets.Toggle("Огонь после 20", () -> c.comboFire, v -> c.comboFire = v));
         combo.opts.add(new Widgets.Toggle("Только игроки", () -> c.comboPlayersOnly, v -> c.comboPlayersOnly = v));
+        combo.opts.add(new Widgets.Choice("Цвет", new String[]{"Авто", "Радуга", "Свой цвет"}, () -> c.comboColorMode, i -> c.comboColorMode = i));
+        combo.opts.add(new Widgets.HueSlider("Свой оттенок", () -> c.comboHue, v -> c.comboHue = v));
 
         Module arm = mod(vis, "Броня (HUD)", () -> c.hudArmor.enabled, v -> c.hudArmor.enabled = v);
         arm.opts.add(new Widgets.Header("Перетаскивай мышью"));
@@ -353,7 +376,12 @@ public class VisualsScreen extends Screen {
         drawHudOutlines(c, now, ease);
 
         if (cfg.guiStyle == 0) {
-            for (int k = 0; k < order.length; k++) renderPanel(c, order[k], mx, my, dt, rawDt, ease, now);
+            for (int k = 0; k < order.length; k++) {
+                c.getMatrices().push();
+                c.getMatrices().translate(0f, 0f, k * 40f);
+                renderPanel(c, order[k], mx, my, dt, rawDt, ease, now);
+                c.getMatrices().pop();
+            }
         } else {
             renderStandard(c, mx, my, dt, rawDt, ease, now);
         }
