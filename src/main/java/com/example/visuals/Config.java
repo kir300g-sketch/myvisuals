@@ -135,7 +135,7 @@ public class Config {
     public boolean trajMarker = true;
     public boolean trajRainbow = false;
     public float trajHue = 0.55f;
-    public float trajWidth = 0.03f;
+    public float trajThick = 0.008f;
     public int trajSteps = 160;
 
     // Обзор 360
@@ -143,6 +143,15 @@ public class Config {
     public int freelookMode = 0; // 0 удержание, 1 переключение
     public int freelookKey = 342; // Left Alt (GLFW_KEY_LEFT_ALT); отрицательные значения: кнопки мыши
     public boolean freelookThird = true;
+
+    // Цели для эффекта убийства и счётчика: 0 только игроки, 1 игроки и мобы, 2 всё кроме животных
+    public int killTargets = 1;
+
+    // Тест-игрок
+    public boolean testMortal = false;
+    public boolean testCopyGear = true;
+    public boolean testRespawn = true;
+    public float testDist = 3f;
 
     // Комбо
     public boolean comboEnabled = false;

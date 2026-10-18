@@ -32,6 +32,7 @@ public class VisualsClient implements ClientModInitializer {
             WorldRender.tick(client);
             Totem.tick(client);
             Freelook.tick(client);
+            TestPlayer.tick(client);
         });
 
         // небо рисуем до сущностей и частиц: так оно не перекрывает их и не ломает их текстуры

@@ -18,6 +18,10 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.mob.Monster;
+import net.minecraft.entity.passive.FishEntity;
+import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.item.BowItem;
 import net.minecraft.item.CrossbowItem;
 import net.minecraft.item.EggItem;
@@ -160,7 +164,8 @@ public class WorldRender {
                 && !p.isClimbing() && !p.isTouchingWater() && !p.hasStatusEffect(StatusEffects.BLINDNESS)
                 && !p.hasVehicle() && !p.isSprinting();
 
-        if (c.killEnabled) addWatch(le, now);
+        if (e instanceof TestPlayer.Dummy bot) TestPlayer.onHit(bot, crit);
+        if (c.killEnabled && validKillTarget(le, c)) addWatch(le, now);
 
         if (c.comboEnabled && (!c.comboPlayersOnly || e instanceof PlayerEntity) && (crit || !c.comboCritOnly)) {
             if (now - lastHit > c.comboReset * 1000) combo = 0;
@@ -169,6 +174,15 @@ public class WorldRender {
             spawnLabel(le, p, now, c);
         }
         if (c.critEnabled && (c.critMode == 1 || crit)) critFx(le, p, c);
+    }
+
+    /** Эффект убийства и счётчик работают на игроков и мобов, но не на животных. */
+    private static boolean validKillTarget(LivingEntity le, Config c) {
+        if (le instanceof PlayerEntity) return true;
+        if (c.killTargets == 0) return false;
+        if (le instanceof Monster) return true;
+        if (c.killTargets == 1) return false;
+        return !(le instanceof PassiveEntity) && !(le instanceof FishEntity) && !(le instanceof ArmorStandEntity);
     }
 
     private static void addWatch(LivingEntity le, long now) {
@@ -478,8 +492,10 @@ public class WorldRender {
     }
 
     private static void onKill(Watch w, Config c, long now) {
-        c.killCount++;
-        Config.save();
+        if (!(w.e instanceof TestPlayer.Dummy)) {
+            c.killCount++;
+            Config.save();
+        }
         if (c.killFx == 1) {
             Scythe s = new Scythe();
             s.x = w.x;
@@ -880,7 +896,7 @@ public class WorldRender {
             int rgb = hsb(c.trajRainbow, c.trajHue, i * 0.02f);
             int col = argb(rgb, 0.95f - 0.6f * (i / (float) n));
             streak(b, m, (float) a1.x, (float) a1.y, (float) a1.z, (float) a0.x, (float) a0.y, (float) a0.z,
-                    cam, c.trajWidth, col, col);
+                    cam, c.trajThick, col, col);
         }
         if (c.trajMarker) {
             Vec3d last = pts.get(n - 1);
@@ -890,10 +906,10 @@ public class WorldRender {
                 float nx = side.getOffsetX(), ny = side.getOffsetY(), nz = side.getOffsetZ();
                 float[] t1 = Math.abs(ny) > 0.5f ? new float[]{1, 0, 0} : new float[]{0, 1, 0};
                 float[] t2 = {ny * t1[2] - nz * t1[1], nz * t1[0] - nx * t1[2], nx * t1[1] - ny * t1[0]};
-                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.32f, 0.07f, mrgb, 0.95f);
-                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.12f, 0.05f, mrgb, 0.95f);
+                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.26f, 0.035f, mrgb, 0.95f);
+                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.1f, 0.03f, mrgb, 0.95f);
             } else {
-                ringBillboard(b, m, (float) last.x, (float) last.y, (float) last.z, right, up, 0.3f, 0.06f, mrgb, 0.95f);
+                ringBillboard(b, m, (float) last.x, (float) last.y, (float) last.z, right, up, 0.24f, 0.035f, mrgb, 0.95f);
             }
         }
         end(b);
@@ -1047,34 +1063,49 @@ public class WorldRender {
         return v - (float) Math.floor(v);
     }
 
-    // ---------- коса (3D, как у Некрофоса) ----------
-    private static final float HPX = -3.5f, HPY = 2.8f; // хват (центр вращения), остриё лезвия в (0,0)
-    private static final int BN = 14;
-    private static final float[][] BO = new float[BN + 1][];
-    private static final float[][] BI = new float[BN + 1][];
+    // ---------- коса (3D, по референсу: зелёное лезвие, череп, изогнутое древко, крюк) ----------
+    private static final int BN = 16, HN = 8;
+    private static final float BASE = (float) Math.toRadians(65);
+    private static final float CB = (float) Math.cos(BASE), SB = (float) Math.sin(BASE);
+    private static final float HPX = 3.25f * CB - 0.02f * SB, HPY = 3.25f * SB + 0.02f * CB; // хват
     private static final float SWING = 0.9f;
     private static final float LX = 0.35f, LY = 0.8f, LZ = 0.5f;
 
-    static {
-        for (int i = 0; i <= BN; i++) {
-            float u = i / (float) BN;
-            BO[i] = bez(-0.7f, 1.4f, 0.2f, 1.3f, 0f, 0f, u);
-            BI[i] = bez(-0.7f, 1.4f, -0.3f, 0.8f, 0f, 0f, u);
+    // координаты точек взяты с картинки (пиксели), остриё лезвия переносится в (0,0)
+    private static float lx(float px) {
+        return px / 100f - 0.70f;
+    }
+
+    private static float ly(float py) {
+        return -py / 100f + 3.20f;
+    }
+
+    private static float[][] curve(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, int n) {
+        float[][] r = new float[n + 1][];
+        for (int i = 0; i <= n; i++) {
+            float t = i / (float) n, u = 1 - t;
+            float x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+            float y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+            r[i] = new float[]{lx(x), ly(y)};
         }
+        return r;
     }
 
-    private static float[] bez(float x0, float y0, float cx, float cy, float x1, float y1, float t) {
-        float u = 1 - t;
-        return new float[]{u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1};
-    }
+    private static final float[][] BLO = curve(100, 75, 20, 150, 35, 260, 75, 320, BN);
+    private static final float[][] BLI = curve(150, 105, 100, 170, 70, 250, 75, 320, BN);
+    private static final float[][] HNO = curve(145, 60, 180, 35, 215, 40, 232, 62, HN);
+    private static final float[][] HNI = curve(150, 105, 175, 70, 205, 60, 232, 62, HN);
+    private static final float[][] HKO = curve(468, 328, 500, 295, 540, 320, 520, 358, HN);
+    private static final float[][] HKI = curve(472, 345, 498, 320, 515, 332, 512, 352, HN);
 
-    /** Локальная точка (в плоскости косы + глубина) в мировые координаты с поворотом вокруг хвата. */
+    /** Локальная точка в мировые координаты: базовый наклон, затем вращение вокруг хвата. */
     private static float[] w3(float ox, float oy, float oz, float rhx, float rhz, float S,
-                              float lx, float ly, float lz, float ang, float yoff) {
-        float dx = lx - HPX, dy = ly - HPY;
+                              float px, float py, float pz, float ang, float yoff) {
+        float bx = px * CB - py * SB, by = px * SB + py * CB;
+        float dx = bx - HPX, dy = by - HPY;
         float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
         float rx = HPX + dx * ca - dy * sa, ry = HPY + dx * sa + dy * ca;
-        return new float[]{ox + rhx * rx * S - rhz * lz * S, oy + ry * S + yoff, oz + rhz * rx * S + rhx * lz * S};
+        return new float[]{ox + rhx * rx * S - rhz * pz * S, oy + ry * S + yoff, oz + rhz * rx * S + rhx * pz * S};
     }
 
     private static void tri3(BufferBuilder b, Matrix4f m, float[] p0, float[] p1, float[] p2, int rgb, float a) {
@@ -1109,28 +1140,45 @@ public class WorldRender {
         }
     }
 
-    private static void scytheMesh(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz, float S,
-                                   float ang, float yoff, float a, int rgb) {
-        // древко, воротник у лезвия и навершие
-        float ax = HPX - 0.35f, ay = HPY + 0.18f, fx = -0.7f, fy = 1.4f;
-        float dx = fx - ax, dy = fy - ay;
-        float l = (float) Math.sqrt(dx * dx + dy * dy);
-        float ux = dx / l, uy = dy / l;
-        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, ax, ay, fx, fy, 0.075f, 0x4A3A60, a);
-        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, fx - ux * 0.3f, fy - uy * 0.3f, fx, fy, 0.13f, mixc(rgb, 0x000000, 0.35f), a);
-        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, ax - ux * 0.2f, ay - uy * 0.2f, ax, ay, 0.1f, mixc(rgb, 0x000000, 0.45f), a);
-
-        // лезвие с толщиной: две грани и боковые стенки
-        float[][] oF = new float[BN + 1][], oB = new float[BN + 1][], iF = new float[BN + 1][], iB = new float[BN + 1][];
-        for (int i = 0; i <= BN; i++) {
-            float th = 0.11f * (1f - 0.7f * i / BN);
-            oF[i] = w3(x, y, z, rhx, rhz, S, BO[i][0], BO[i][1], th, ang, yoff);
-            oB[i] = w3(x, y, z, rhx, rhz, S, BO[i][0], BO[i][1], -th, ang, yoff);
-            iF[i] = w3(x, y, z, rhx, rhz, S, BI[i][0], BI[i][1], th, ang, yoff);
-            iB[i] = w3(x, y, z, rhx, rhz, S, BI[i][0], BI[i][1], -th, ang, yoff);
+    private static void ellipsoid(BufferBuilder b, Matrix4f m, float ox, float oy, float oz, float rhx, float rhz, float S,
+                                  float ang, float yoff, float cx, float cy, float cz, float rx, float ry, float rz,
+                                  int rgb, float a) {
+        int lat = 5, lon = 8;
+        for (int i = 0; i < lat; i++) {
+            double p0 = -Math.PI / 2 + i * Math.PI / lat, p1 = -Math.PI / 2 + (i + 1) * Math.PI / lat;
+            for (int j = 0; j < lon; j++) {
+                double t0 = j * Math.PI * 2 / lon, t1 = (j + 1) * Math.PI * 2 / lon;
+                float[] a0 = w3(ox, oy, oz, rhx, rhz, S, cx + rx * (float) (Math.cos(p0) * Math.cos(t0)),
+                        cy + ry * (float) Math.sin(p0), cz + rz * (float) (Math.cos(p0) * Math.sin(t0)), ang, yoff);
+                float[] a1 = w3(ox, oy, oz, rhx, rhz, S, cx + rx * (float) (Math.cos(p0) * Math.cos(t1)),
+                        cy + ry * (float) Math.sin(p0), cz + rz * (float) (Math.cos(p0) * Math.sin(t1)), ang, yoff);
+                float[] b0 = w3(ox, oy, oz, rhx, rhz, S, cx + rx * (float) (Math.cos(p1) * Math.cos(t0)),
+                        cy + ry * (float) Math.sin(p1), cz + rz * (float) (Math.cos(p1) * Math.sin(t0)), ang, yoff);
+                float[] b1 = w3(ox, oy, oz, rhx, rhz, S, cx + rx * (float) (Math.cos(p1) * Math.cos(t1)),
+                        cy + ry * (float) Math.sin(p1), cz + rz * (float) (Math.cos(p1) * Math.sin(t1)), ang, yoff);
+                tri3(b, m, a0, a1, b1, rgb, a);
+                tri3(b, m, a0, b1, b0, rgb, a);
+            }
         }
-        int face = mixWhite(rgb, 0.45f), edge = rgb;
-        for (int i = 0; i < BN; i++) {
+    }
+
+    /** Лезвие с толщиной: две грани и боковые стенки, цвет плавно меняется от основания к острию. */
+    private static void bladeShape(BufferBuilder b, Matrix4f m, float ox, float oy, float oz, float rhx, float rhz, float S,
+                                   float ang, float yoff, float a, float[][] O, float[][] I,
+                                   float th0, float th1, int cRoot, int cTip) {
+        int n = O.length - 1;
+        float[][] oF = new float[n + 1][], oB = new float[n + 1][], iF = new float[n + 1][], iB = new float[n + 1][];
+        for (int i = 0; i <= n; i++) {
+            float th = th0 + (th1 - th0) * i / n;
+            oF[i] = w3(ox, oy, oz, rhx, rhz, S, O[i][0], O[i][1], th, ang, yoff);
+            oB[i] = w3(ox, oy, oz, rhx, rhz, S, O[i][0], O[i][1], -th, ang, yoff);
+            iF[i] = w3(ox, oy, oz, rhx, rhz, S, I[i][0], I[i][1], th, ang, yoff);
+            iB[i] = w3(ox, oy, oz, rhx, rhz, S, I[i][0], I[i][1], -th, ang, yoff);
+        }
+        for (int i = 0; i < n; i++) {
+            float u = (i + 0.5f) / n;
+            int face = mixWhite(mixc(cRoot, cTip, u), 0.1f);
+            int edge = mixc(face, 0x000000, 0.3f);
             tri3(b, m, oF[i], iF[i], oF[i + 1], face, a);
             tri3(b, m, iF[i], iF[i + 1], oF[i + 1], face, a);
             tri3(b, m, oB[i], iB[i], oB[i + 1], face, a);
@@ -1140,12 +1188,58 @@ public class WorldRender {
             tri3(b, m, iF[i], iB[i], iF[i + 1], edge, a);
             tri3(b, m, iB[i], iB[i + 1], iF[i + 1], edge, a);
         }
-        tri3(b, m, oF[0], oB[0], iF[0], edge, a);
-        tri3(b, m, oB[0], iB[0], iF[0], edge, a);
+        int e0 = mixc(cRoot, 0x000000, 0.3f);
+        tri3(b, m, oF[0], oB[0], iF[0], e0, a);
+        tri3(b, m, oB[0], iB[0], iF[0], e0, a);
+    }
+
+    private static void scytheMesh(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz, float S,
+                                   float ang, float yoff, float a, int rgb) {
+        int tip = mixc(rgb, 0xFFF08A, 0.55f); // кончик желтеет, как на референсе
+        bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, BLO, BLI, 0.13f, 0.03f, mixc(rgb, 0x000000, 0.15f), tip);
+        bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, HNO, HNI, 0.07f, 0.02f, rgb, tip);
+        bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, HKO, HKI, 0.07f, 0.05f, mixc(rgb, 0x000000, 0.2f), rgb);
+
+        // череп на основании лезвия
+        int bone = 0xE8D58A;
+        float sx = lx(125), sy = ly(78);
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx, sy, 0f, 0.33f, 0.27f, 0.26f, bone, a);
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx + 0.03f, sy - 0.27f, 0f, 0.2f, 0.12f, 0.18f, bone, a);
+        float[][] eyes = {{lx(112), ly(75)}, {lx(137), ly(80)}};
+        for (float[] e : eyes) {
+            for (int side = -1; side <= 1; side += 2) {
+                float zz = side * 0.265f;
+                float[] q0 = w3(x, y, z, rhx, rhz, S, e[0] - 0.07f, e[1] - 0.08f, zz, ang, yoff);
+                float[] q1 = w3(x, y, z, rhx, rhz, S, e[0] + 0.07f, e[1] - 0.08f, zz, ang, yoff);
+                float[] q2 = w3(x, y, z, rhx, rhz, S, e[0] + 0.07f, e[1] + 0.08f, zz, ang, yoff);
+                float[] q3 = w3(x, y, z, rhx, rhz, S, e[0] - 0.07f, e[1] + 0.08f, zz, ang, yoff);
+                tri3(b, m, q0, q1, q2, 0x2A2410, a);
+                tri3(b, m, q0, q2, q3, 0x2A2410, a);
+            }
+        }
+
+        // древко: изогнутое, коричневое
+        int wood = 0x6B4A2E;
+        float[][] pole = {{195, 160}, {270, 200}, {315, 242}, {395, 318}, {470, 332}};
+        for (int i = 0; i < pole.length - 1; i++) {
+            cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(pole[i][0]), ly(pole[i][1]),
+                    lx(pole[i + 1][0]), ly(pole[i + 1][1]), 0.075f, wood, a);
+        }
+        // зелёные воротники и красная обмотка
+        int armor = mixc(rgb, 0x000000, 0.45f);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(182), ly(148), lx(208), ly(176), 0.17f, armor, a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(262), ly(194), lx(284), ly(213), 0.12f, armor, a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(284), ly(213), lx(305), ly(236), 0.095f, 0xA03C50, a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(305), ly(236), lx(322), ly(250), 0.12f, armor, a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(458), ly(328), lx(480), ly(336), 0.1f, armor, a);
+        // светящийся шар в крюке
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(505), ly(345), 0f, 0.11f, 0.11f, 0.11f,
+                mixWhite(mixc(rgb, 0xFFF08A, 0.5f), 0.3f), a);
     }
 
     private static float[] gp(float ox, float oy, float oz, float rhx, float rhz, float S, float[] pt, float ang, float yoff) {
-        return w3(ox, oy, oz, rhx, rhz, S, -0.25f + (pt[0] + 0.25f) * 1.2f, 0.7f + (pt[1] - 0.7f) * 1.2f, 0f, ang, yoff);
+        float cx = lx(80), cy = ly(190);
+        return w3(ox, oy, oz, rhx, rhz, S, cx + (pt[0] - cx) * 1.2f, cy + (pt[1] - cy) * 1.2f, 0f, ang, yoff);
     }
 
     /** Мягкое свечение вокруг лезвия и призрачный след взмаха. */
@@ -1153,8 +1247,8 @@ public class WorldRender {
                                   float ang, float yoff, float a, int rgb) {
         int col = argb(rgb, a);
         for (int i = 0; i < BN; i++) {
-            float[] o0 = gp(x, y, z, rhx, rhz, S, BO[i], ang, yoff), o1 = gp(x, y, z, rhx, rhz, S, BO[i + 1], ang, yoff);
-            float[] i0 = gp(x, y, z, rhx, rhz, S, BI[i], ang, yoff), i1 = gp(x, y, z, rhx, rhz, S, BI[i + 1], ang, yoff);
+            float[] o0 = gp(x, y, z, rhx, rhz, S, BLO[i], ang, yoff), o1 = gp(x, y, z, rhx, rhz, S, BLO[i + 1], ang, yoff);
+            float[] i0 = gp(x, y, z, rhx, rhz, S, BLI[i], ang, yoff), i1 = gp(x, y, z, rhx, rhz, S, BLI[i + 1], ang, yoff);
             vtx(b, m, o0[0], o0[1], o0[2], col);
             vtx(b, m, i0[0], i0[1], i0[2], col);
             vtx(b, m, o1[0], o1[1], o1[2], col);
@@ -1171,11 +1265,11 @@ public class WorldRender {
         float phi, yoff;
         if (t < SWING) {
             float e = tt * tt * tt; // медленно сверху, всё быстрее к низу
-            phi = 135f * (1f - e);
+            phi = -115f * (1f - e);
             yoff = 2.4f * (1f - e);
         } else {
             float k = t - SWING;
-            phi = -7f * (float) (Math.exp(-6 * k) * Math.cos(k * 25));
+            phi = 7f * (float) (Math.exp(-6 * k) * Math.cos(k * 25));
             yoff = 0f;
         }
         float alpha;
@@ -1188,10 +1282,10 @@ public class WorldRender {
         float x = (float) sc.x, y = (float) sc.y, z = (float) sc.z;
         if (t < SWING && tt > 0.55f) {
             for (int g = 4; g >= 1; g--) {
-                bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi + g * 7f), yoff + g * 0.1f, alpha * (0.4f / g), rgb);
+                bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi - g * 7f), yoff + g * 0.1f, alpha * (0.4f / g), rgb);
             }
         }
-        bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), yoff, alpha * 0.35f, rgb);
+        bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), yoff, alpha * 0.3f, rgb);
         scytheMesh(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), yoff, alpha, rgb);
     }
 
