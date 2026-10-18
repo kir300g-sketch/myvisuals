@@ -35,8 +35,6 @@ public class VisualsClient implements ClientModInitializer {
             TestPlayer.tick(client);
         });
 
-        // небо рисуем до сущностей и частиц: так оно не перекрывает их и не ломает их текстуры
-        WorldRenderEvents.BEFORE_ENTITIES.register(WorldRender::renderSky);
         WorldRenderEvents.AFTER_TRANSLUCENT.register(WorldRender::render);
     }
 }

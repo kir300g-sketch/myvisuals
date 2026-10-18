@@ -243,13 +243,17 @@ public final class Totem {
             Files.deleteIfExists(tex);
         }
 
-        Path snd = root.resolve("assets/minecraft/sounds/item/totem/use.ogg");
+        Files.deleteIfExists(root.resolve("assets/minecraft/sounds/item/totem/use.ogg"));
+        Path snd = root.resolve("assets/minecraft/sounds/myvisuals/totem_use.ogg");
+        Path json = root.resolve("assets/minecraft/sounds.json");
         if (hasSound()) {
             Files.createDirectories(snd.getParent());
             Files.copy(soundFile(), snd, StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(json, "{\"item.totem.use\":{\"replace\":true,\"sounds\":[{\"name\":\"myvisuals/totem_use\"}]}}");
             info += "звук ";
         } else {
             Files.deleteIfExists(snd);
+            Files.deleteIfExists(json);
         }
         status = "Пак создан: " + info + "(перезагрузка ресурсов...)";
     }

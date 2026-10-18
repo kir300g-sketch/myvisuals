@@ -147,6 +147,11 @@ public class Config {
     // Цели для эффекта убийства и счётчика: 0 только игроки, 1 игроки и мобы, 2 всё кроме животных
     public int killTargets = 1;
 
+    public boolean killGhost = true;
+
+    // Физика предметов
+    public boolean itemPhysics = false;
+
     // Тест-игрок
     public boolean testMortal = false;
     public boolean testCopyGear = true;

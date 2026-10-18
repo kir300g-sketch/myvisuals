@@ -128,6 +128,7 @@ public class VisualsScreen extends Screen {
         kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса"}, () -> c.killFx, i -> c.killFx = i));
         kill.opts.add(new Widgets.Choice("Цели", new String[]{"Только игроки", "Игроки и мобы", "Всё кроме животных"}, () -> c.killTargets, i -> c.killTargets = i));
         kill.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.killSize, v -> c.killSize = v));
+        kill.opts.add(new Widgets.Toggle("Призрак-жнец", () -> c.killGhost, v -> c.killGhost = v));
         kill.opts.add(new Widgets.Toggle("Счётчик на месте смерти", () -> c.killCounter, v -> c.killCounter = v));
         kill.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.killRainbow, v -> c.killRainbow = v));
         kill.opts.add(new Widgets.HueSlider("Цвет", () -> c.killHue, v -> c.killHue = v));
@@ -236,6 +237,8 @@ public class VisualsScreen extends Screen {
         sky.opts.add(new Widgets.Choice("Стиль", SkyFx.STYLES, () -> c.skyStyle, i -> c.skyStyle = i));
         sky.opts.add(new Widgets.Slider("Вращение", 0f, 2f, 2, () -> c.skySpin, v -> c.skySpin = v));
         sky.opts.add(new Widgets.Slider("Яркость", 0.3f, 1f, 2, () -> c.skyBright, v -> c.skyBright = v));
+
+        mod(world, "Физика предметов", () -> c.itemPhysics, v -> c.itemPhysics = v);
 
         // ---- Effects ----
         Category fx = cat("Effects");

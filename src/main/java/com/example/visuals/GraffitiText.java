@@ -17,6 +17,8 @@ import java.awt.Shape;
 import java.awt.font.FontRenderContext;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.FlatteningPathIterator;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -88,21 +90,24 @@ public final class GraffitiText {
         float x = 0;
         for (char ch : text.toCharArray()) {
             if (ch == ' ') {
-                x += base.getSize() * 0.32f;
+                x += base.getSize() * 0.3f;
                 continue;
             }
             GlyphVector gv = base.createGlyphVector(frc, String.valueOf(ch));
             Shape s = gv.getOutline();
             Rectangle2D gb = gv.getLogicalBounds();
-            double rot = (r.nextDouble() - 0.5) * 0.24;
-            double sc = 0.95 + r.nextDouble() * 0.22;
-            double dy = (r.nextDouble() - 0.5) * 16;
+            double sx = 0.8 + r.nextDouble() * 0.6;
+            double sy = 0.85 + r.nextDouble() * 0.7;
+            double shear = (r.nextDouble() - 0.5) * 0.5;
+            double rot = (r.nextDouble() - 0.5) * 0.3;
+            double dy = (r.nextDouble() - 0.5) * 30;
             AffineTransform at = new AffineTransform();
             at.translate(x, dy);
             at.rotate(rot, gb.getWidth() / 2, -base.getSize() * 0.3);
-            at.scale(sc, sc);
-            path.append(at.createTransformedShape(s), false);
-            x += (float) gb.getWidth() * 0.9f;
+            at.shear(shear, 0);
+            at.scale(sx, sy);
+            path.append(angular(at.createTransformedShape(s)), false);
+            x += (float) (gb.getWidth() * sx * 0.88);
         }
 
         Rectangle2D pb = path.getBounds2D();
@@ -116,7 +121,7 @@ public final class GraffitiText {
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = out.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setStroke(new BasicStroke(16f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setStroke(new BasicStroke(16f, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 14f));
         for (int i = 12; i >= 1; i--) {
             AffineTransform off = AffineTransform.getTranslateInstance(i * 0.7, i * 0.9);
             Shape os = off.createTransformedShape(sh);
@@ -137,7 +142,7 @@ public final class GraffitiText {
         f.fill(sh);
         f.setComposite(AlphaComposite.SrcAtop);
         f.setColor(new Color(255, 255, 255, 190));
-        f.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        f.setStroke(new BasicStroke(3f, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 10f));
         AffineTransform hi = AffineTransform.getTranslateInstance(-2, -2);
         f.draw(hi.createTransformedShape(sh));
         f.dispose();
@@ -148,6 +153,21 @@ public final class GraffitiText {
         t.outId = upload(out);
         t.fillId = upload(fill);
         return t;
+    }
+
+    /** Превращает кривые контура в ломаную: буквы получаются угловатыми и острыми. */
+    private static Path2D.Float angular(Shape s) {
+        Path2D.Float out = new Path2D.Float();
+        PathIterator it = new FlatteningPathIterator(s.getPathIterator(null), 9.0, 3);
+        float[] c = new float[6];
+        while (!it.isDone()) {
+            int t = it.currentSegment(c);
+            if (t == PathIterator.SEG_MOVETO) out.moveTo(c[0], c[1]);
+            else if (t == PathIterator.SEG_LINETO) out.lineTo(c[0], c[1]);
+            else if (t == PathIterator.SEG_CLOSE) out.closePath();
+            it.next();
+        }
+        return out;
     }
 
     private static int upload(BufferedImage img) {

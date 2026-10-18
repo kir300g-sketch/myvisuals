@@ -8,7 +8,8 @@
     "BackgroundRendererMixin",
     "GameRendererMixin",
     "EntityMixin",
-    "CameraMixin"
+    "CameraMixin",
+    "ItemEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 0
