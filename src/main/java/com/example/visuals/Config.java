@@ -128,6 +128,22 @@ public class Config {
     public boolean killCounter = true;
     public int killCount = 0;
 
+    // Траектория выстрела
+    public boolean trajEnabled = false;
+    public boolean trajBow = true;
+    public boolean trajPearl = true;
+    public boolean trajMarker = true;
+    public boolean trajRainbow = false;
+    public float trajHue = 0.55f;
+    public float trajWidth = 0.03f;
+    public int trajSteps = 160;
+
+    // Обзор 360
+    public boolean freelookEnabled = false;
+    public int freelookMode = 0; // 0 удержание, 1 переключение
+    public int freelookKey = 342; // Left Alt (GLFW_KEY_LEFT_ALT); отрицательные значения: кнопки мыши
+    public boolean freelookThird = true;
+
     // Комбо
     public boolean comboEnabled = false;
     public float comboSize = 1.2f;

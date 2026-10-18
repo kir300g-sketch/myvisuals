@@ -163,6 +163,7 @@ public final class GraffitiText {
             }
         }
         buf.flip();
+        int prevBound = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int id = GlStateManager._genTexture();
         RenderSystem.bindTexture(id);
         GL11.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);
@@ -174,6 +175,7 @@ public final class GraffitiText {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, 33071);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, 33071);
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        RenderSystem.bindTexture(prevBound);
         return id;
     }
 }

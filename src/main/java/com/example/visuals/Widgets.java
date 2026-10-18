@@ -2,6 +2,7 @@ package com.example.visuals;
 
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.util.InputUtil;
 
 import java.awt.Color;
 import java.util.Locale;
@@ -307,6 +308,49 @@ public final class Widgets {
             Ui.rr(c, x, y, x + w, y + 16, 4, Ui.col(Ui.accent(), (0.18f + 0.25f * hover) * a));
             String s = tr.trimToWidth(label, w - 6);
             c.drawText(tr, s, x + (w - tr.getWidth(s)) / 2, y + 4, Ui.col(0xFFFFFF, a), false);
+        }
+    }
+
+    /** Кнопка назначения клавиши: клик, затем нажми клавишу (Esc отмена, боковые кнопки мыши тоже подходят). */
+    public static class Bind extends Option {
+        public static Bind listening = null;
+        private final Supplier<Integer> get;
+        private final Consumer<Integer> set;
+
+        public Bind(String label, Supplier<Integer> get, Consumer<Integer> set) {
+            super(label);
+            this.get = get;
+            this.set = set;
+        }
+
+        public void accept(int code) {
+            set.accept(code);
+            listening = null;
+        }
+
+        public static String keyName(int code) {
+            if (code < 0) return "Mouse " + (-code);
+            try {
+                return InputUtil.fromKeyCode(code, 0).getLocalizedText().getString();
+            } catch (Exception e) {
+                return "Key " + code;
+            }
+        }
+
+        @Override
+        public void click(double mx, double my, int button) {
+            listening = (listening == this) ? null : this;
+        }
+
+        @Override
+        public void render(DrawContext c, TextRenderer tr, int mx, int my, float dt, float a) {
+            updateHover(mx, my, dt);
+            bg(c, 16, a);
+            boolean on = listening == this;
+            String v = on ? "нажми клавишу..." : keyName(get.get());
+            int color = on ? 0xFFFFFF : Ui.mix(Ui.accent(), 0xFFFFFF, 0.3f);
+            c.drawText(tr, tr.trimToWidth(v, w / 2), x + w - 5 - Math.min(tr.getWidth(v), w / 2), y + 4, Ui.col(color, a), false);
+            c.drawText(tr, tr.trimToWidth(label, w / 2 - 6), x + 5, y + 4, Ui.col(0xFFFFFF, (0.8f + 0.2f * hover) * a), false);
         }
     }
 }

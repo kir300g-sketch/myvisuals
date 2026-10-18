@@ -114,6 +114,7 @@ public final class SkyFx {
             }
         }
         buf.flip();
+        int prevBound = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int id = GlStateManager._genTexture();
         RenderSystem.bindTexture(id);
         GL11.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);
@@ -125,6 +126,7 @@ public final class SkyFx {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, 10497);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, 33071);
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, W, H, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        RenderSystem.bindTexture(prevBound);
         return id;
     }
 
@@ -133,6 +135,7 @@ public final class SkyFx {
         int style = Math.max(0, Math.min(3, c.skyStyle));
         if (ids[style] == 0) ids[style] = generate(style);
 
+        int prevTex = RenderSystem.getShaderTexture(0);
         RenderSystem.setShader(GameRenderer::getPositionTexColorProgram);
         RenderSystem.setShaderTexture(0, ids[style]);
         BufferBuilder b = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_TEXTURE_COLOR);
@@ -159,6 +162,7 @@ public final class SkyFx {
         }
         BuiltBuffer built = b.endNullable();
         if (built != null) BufferRenderer.drawWithGlobalProgram(built);
+        RenderSystem.setShaderTexture(0, prevTex);
     }
 
     private static float[] pt(Vec3d cam, float r, double phi, double th) {

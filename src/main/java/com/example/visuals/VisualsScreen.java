@@ -136,13 +136,23 @@ public class VisualsScreen extends Screen {
 
         Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
-        totem.opts.add(new Widgets.Header("Перетащи PNG в окно игры"));
+        totem.opts.add(new Widgets.Header("Перетащи в окно: PNG или OGG"));
         totem.opts.add(new Widgets.Choice("Разрешение", new String[]{"64", "128", "256", "512"}, () -> c.totemRes, i -> {
             c.totemRes = i;
             Totem.regenerate();
         }));
-        totem.opts.add(new Widgets.Action("Взять config/myvisuals/totem.png", Totem::loadFromConfigDir));
-        totem.opts.add(new Widgets.Action("Сбросить тотем", Totem::reset));
+        totem.opts.add(new Widgets.Action("Взять файлы из config/myvisuals", Totem::loadFromConfigDir));
+        totem.opts.add(new Widgets.Action("Сбросить картинку", Totem::resetPicture));
+        totem.opts.add(new Widgets.Action("Сбросить звук", Totem::resetSound));
+
+        Module traj = mod(combat, "Траектория", () -> c.trajEnabled, v -> c.trajEnabled = v);
+        traj.opts.add(new Widgets.Toggle("Лук, арбалет, трезубец", () -> c.trajBow, v -> c.trajBow = v));
+        traj.opts.add(new Widgets.Toggle("Жемчуг, снежки, яйца", () -> c.trajPearl, v -> c.trajPearl = v));
+        traj.opts.add(new Widgets.Toggle("Маркер падения", () -> c.trajMarker, v -> c.trajMarker = v));
+        traj.opts.add(new Widgets.Slider("Длина", 20, 300, 0, () -> (float) c.trajSteps, v -> c.trajSteps = Math.round(v)));
+        traj.opts.add(new Widgets.Slider("Толщина", 0.01f, 0.08f, 3, () -> c.trajWidth, v -> c.trajWidth = v));
+        traj.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.trajRainbow, v -> c.trajRainbow = v));
+        traj.opts.add(new Widgets.HueSlider("Цвет", () -> c.trajHue, v -> c.trajHue = v));
 
         // ---- Visuals ----
         Category vis = cat("Visuals");
@@ -178,6 +188,11 @@ public class VisualsScreen extends Screen {
         combo.opts.add(new Widgets.Toggle("Только игроки", () -> c.comboPlayersOnly, v -> c.comboPlayersOnly = v));
         combo.opts.add(new Widgets.Choice("Цвет", new String[]{"Авто", "Радуга", "Свой цвет"}, () -> c.comboColorMode, i -> c.comboColorMode = i));
         combo.opts.add(new Widgets.HueSlider("Свой оттенок", () -> c.comboHue, v -> c.comboHue = v));
+
+        Module free = mod(vis, "Обзор 360", () -> c.freelookEnabled, v -> c.freelookEnabled = v);
+        free.opts.add(new Widgets.Choice("Режим", new String[]{"Удержание", "Переключение"}, () -> c.freelookMode, i -> c.freelookMode = i));
+        free.opts.add(new Widgets.Bind("Клавиша", () -> c.freelookKey, i -> c.freelookKey = i));
+        free.opts.add(new Widgets.Toggle("Третье лицо при включении", () -> c.freelookThird, v -> c.freelookThird = v));
 
         Module arm = mod(vis, "Броня (HUD)", () -> c.hudArmor.enabled, v -> c.hudArmor.enabled = v);
         arm.opts.add(new Widgets.Header("Перетаскивай мышью"));
@@ -554,6 +569,11 @@ public class VisualsScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (closing) return super.mouseClicked(mx, my, button);
+        if (Widgets.Bind.listening != null && button >= 2) {
+            Widgets.Bind.listening.accept(-1 - button);
+            Config.save();
+            return true;
+        }
         Config cfg = Config.I;
 
         if (cfg.guiStyle == 0) {
@@ -692,6 +712,12 @@ public class VisualsScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scan, int mods) {
+        if (Widgets.Bind.listening != null) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) Widgets.Bind.listening = null;
+            else Widgets.Bind.listening.accept(key);
+            Config.save();
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_RIGHT_SHIFT) {
             close();
             return true;

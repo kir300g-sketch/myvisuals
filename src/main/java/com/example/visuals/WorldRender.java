@@ -18,6 +18,18 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.BowItem;
+import net.minecraft.item.CrossbowItem;
+import net.minecraft.item.EggItem;
+import net.minecraft.item.EnderPearlItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.SnowballItem;
+import net.minecraft.item.TridentItem;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
+import net.minecraft.world.RaycastContext;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
@@ -485,12 +497,12 @@ public class WorldRender {
         while (it.hasNext()) {
             Scythe s = it.next();
             long age = now - s.t0;
-            if (!s.impacted && age >= 220) {
+            if (!s.impacted && age >= 900) {
                 s.impacted = true;
                 killBurst(s.x, s.y + 0.4, s.z, c);
                 if (c.killCounter) spawnKillLabel(s.x, s.y + 1.0, s.z, now);
             }
-            if (age > 1500) it.remove();
+            if (age > 2500) it.remove();
         }
     }
 
@@ -690,7 +702,7 @@ public class WorldRender {
         MatrixStack ms = ctx.matrixStack();
         if (ms == null) return;
         Config c = Config.I;
-        boolean anything = c.ribbonEnabled || c.jumpEnabled || c.hatEnabled || c.haloEnabled || c.skyEnabled
+        boolean anything = c.ribbonEnabled || c.jumpEnabled || c.hatEnabled || c.haloEnabled || c.trajEnabled
                 || !drops.isEmpty() || !rings.isEmpty() || !sparks.isEmpty() || !labels.isEmpty()
                 || !decals.isEmpty() || !scythes.isEmpty();
         if (!anything) return;
@@ -712,9 +724,6 @@ public class WorldRender {
         RenderSystem.disableCull();
         RenderSystem.depthMask(false);
 
-        if (c.skyEnabled) {
-            SkyFx.draw(m, cp, mc.gameRenderer.getFarPlaneDistance() * 0.9f, now);
-        }
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
         Quaternionf q = ctx.camera().getRotation();
@@ -726,6 +735,7 @@ public class WorldRender {
 
         if (c.ribbonEnabled) drawRibbon(m, c, px, py, pz, now);
         if (!rings.isEmpty()) drawRings(m, c, now);
+        if (c.trajEnabled) drawTrajectory(m, c, p, mc, td, px, py, pz, cp, right, up);
         double top = py + p.getHeight();
         if (c.hatEnabled && !first) drawHat(m, c, px, top, pz);
         if (c.haloEnabled && !first) drawHalo(m, c, px, top, pz, now);
@@ -739,6 +749,154 @@ public class WorldRender {
         RenderSystem.enableCull();
         RenderSystem.disableBlend();
         ms.pop();
+    }
+
+    /** Небо: рисуется до сущностей и частиц, не перекрывает их и не трогает их состояние. */
+    public static void renderSky(WorldRenderContext ctx) {
+        Config c = Config.I;
+        if (!c.skyEnabled) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.world == null) return;
+        MatrixStack ms = ctx.matrixStack();
+        if (ms == null) return;
+        Vec3d cp = ctx.camera().getPos();
+        ms.push();
+        ms.translate(-cp.x, -cp.y, -cp.z);
+        Matrix4f m = ms.peek().getPositionMatrix();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableCull();
+        RenderSystem.depthMask(false);
+        SkyFx.draw(m, cp, mc.gameRenderer.getFarPlaneDistance() * 0.9f, System.currentTimeMillis());
+        RenderSystem.depthMask(true);
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
+        ms.pop();
+    }
+
+    // ---------- траектория выстрела ----------
+    private static void ring3D(BufferBuilder b, Matrix4f m, float x, float y, float z, float nx, float ny, float nz,
+                               float[] t1, float[] t2, float rad, float thick, int rgb, float a) {
+        int seg = 24;
+        float off = 0.02f;
+        float ri = Math.max(0f, rad - thick);
+        for (int i = 0; i < seg; i++) {
+            double a1 = i * Math.PI * 2 / seg, a2 = (i + 1) * Math.PI * 2 / seg;
+            float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1), c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
+            float bx = x + nx * off, by = y + ny * off, bz = z + nz * off;
+            float[][] p = new float[4][];
+            p[0] = new float[]{bx + (t1[0] * c1 + t2[0] * s1) * ri, by + (t1[1] * c1 + t2[1] * s1) * ri, bz + (t1[2] * c1 + t2[2] * s1) * ri};
+            p[1] = new float[]{bx + (t1[0] * c1 + t2[0] * s1) * rad, by + (t1[1] * c1 + t2[1] * s1) * rad, bz + (t1[2] * c1 + t2[2] * s1) * rad};
+            p[2] = new float[]{bx + (t1[0] * c2 + t2[0] * s2) * rad, by + (t1[1] * c2 + t2[1] * s2) * rad, bz + (t1[2] * c2 + t2[2] * s2) * rad};
+            p[3] = new float[]{bx + (t1[0] * c2 + t2[0] * s2) * ri, by + (t1[1] * c2 + t2[1] * s2) * ri, bz + (t1[2] * c2 + t2[2] * s2) * ri};
+            int in = argb(rgb, a * 0.15f), out = argb(rgb, a);
+            vtx(b, m, p[0][0], p[0][1], p[0][2], in);
+            vtx(b, m, p[1][0], p[1][1], p[1][2], out);
+            vtx(b, m, p[2][0], p[2][1], p[2][2], out);
+            vtx(b, m, p[0][0], p[0][1], p[0][2], in);
+            vtx(b, m, p[2][0], p[2][1], p[2][2], out);
+            vtx(b, m, p[3][0], p[3][1], p[3][2], in);
+        }
+    }
+
+    private static void drawTrajectory(Matrix4f m, Config c, ClientPlayerEntity p, MinecraftClient mc, float td,
+                                       double px, double py, double pz, Vec3d cam, Vector3f right, Vector3f up) {
+        float speed = 0f, grav = 0.03f;
+        boolean found = false;
+        ItemStack[] hands = {p.getMainHandStack(), p.getOffHandStack()};
+        for (ItemStack st : hands) {
+            Item it = st.getItem();
+            if (c.trajBow && it instanceof BowItem && p.isUsingItem() && p.getActiveItem().getItem() instanceof BowItem) {
+                float pull = BowItem.getPullProgress(p.getItemUseTime());
+                if (pull < 0.1f) continue;
+                speed = pull * 3f;
+                grav = 0.05f;
+                found = true;
+                break;
+            }
+            if (c.trajBow && it instanceof CrossbowItem && CrossbowItem.isCharged(st)) {
+                speed = 3.15f;
+                grav = 0.05f;
+                found = true;
+                break;
+            }
+            if (c.trajBow && it instanceof TridentItem && p.isUsingItem() && p.getActiveItem().getItem() instanceof TridentItem
+                    && p.getItemUseTime() >= 10) {
+                speed = 2.5f;
+                grav = 0.05f;
+                found = true;
+                break;
+            }
+            if (c.trajPearl && (it instanceof EnderPearlItem || it instanceof SnowballItem || it instanceof EggItem)) {
+                speed = 1.5f;
+                grav = 0.03f;
+                found = true;
+                break;
+            }
+        }
+        if (!found) return;
+
+        float eyeH = p.getEyeHeight(p.getPose());
+        Vec3d pos = new Vec3d(px, py + eyeH - 0.1, pz);
+        double yr = Math.toRadians(p.getYaw(td)), pr = Math.toRadians(p.getPitch(td));
+        Vec3d dir = new Vec3d(-Math.sin(yr) * Math.cos(pr), -Math.sin(pr), Math.cos(yr) * Math.cos(pr));
+        Vec3d pv0 = p.getVelocity();
+        Vec3d vel = dir.multiply(speed).add(pv0.x, p.isOnGround() ? 0 : pv0.y, pv0.z);
+
+        List<Entity> ents = mc.world.getOtherEntities(p, new Box(px - 80, py - 80, pz - 80, px + 80, py + 80, pz + 80),
+                ent -> ent instanceof LivingEntity && ent.isAlive());
+        List<Vec3d> pts = new ArrayList<>();
+        pts.add(pos);
+        BlockHitResult hitBlock = null;
+        boolean hitEnt = false;
+        int steps = Math.max(10, c.trajSteps);
+        for (int i = 0; i < steps; i++) {
+            Vec3d next = pos.add(vel);
+            BlockHitResult r = mc.world.raycast(new RaycastContext(pos, next, RaycastContext.ShapeType.COLLIDER,
+                    RaycastContext.FluidHandling.NONE, p));
+            if (r.getType() != HitResult.Type.MISS) {
+                next = r.getPos();
+                hitBlock = r;
+            }
+            for (Entity ent : ents) {
+                java.util.Optional<Vec3d> hp = ent.getBoundingBox().expand(0.3).raycast(pos, next);
+                if (hp.isPresent()) {
+                    next = hp.get();
+                    hitEnt = true;
+                    hitBlock = null;
+                    break;
+                }
+            }
+            pts.add(next);
+            if (hitBlock != null || hitEnt) break;
+            pos = next;
+            vel = vel.multiply(0.99).subtract(0, grav, 0);
+        }
+
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
+        int n = pts.size();
+        for (int i = 1; i < n; i++) {
+            Vec3d a0 = pts.get(i - 1), a1 = pts.get(i);
+            int rgb = hsb(c.trajRainbow, c.trajHue, i * 0.02f);
+            int col = argb(rgb, 0.95f - 0.6f * (i / (float) n));
+            streak(b, m, (float) a1.x, (float) a1.y, (float) a1.z, (float) a0.x, (float) a0.y, (float) a0.z,
+                    cam, c.trajWidth, col, col);
+        }
+        if (c.trajMarker) {
+            Vec3d last = pts.get(n - 1);
+            int mrgb = hitEnt ? 0xFF4040 : (hitBlock != null ? 0x40FF70 : 0xFFFFFF);
+            if (hitBlock != null) {
+                Direction side = hitBlock.getSide();
+                float nx = side.getOffsetX(), ny = side.getOffsetY(), nz = side.getOffsetZ();
+                float[] t1 = Math.abs(ny) > 0.5f ? new float[]{1, 0, 0} : new float[]{0, 1, 0};
+                float[] t2 = {ny * t1[2] - nz * t1[1], nz * t1[0] - nx * t1[2], nx * t1[1] - ny * t1[0]};
+                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.32f, 0.07f, mrgb, 0.95f);
+                ring3D(b, m, (float) last.x, (float) last.y, (float) last.z, nx, ny, nz, t1, t2, 0.12f, 0.05f, mrgb, 0.95f);
+            } else {
+                ringBillboard(b, m, (float) last.x, (float) last.y, (float) last.z, right, up, 0.3f, 0.06f, mrgb, 0.95f);
+            }
+        }
+        end(b);
     }
 
     // ---------- частицы, лужи крови, коса ----------
@@ -889,99 +1047,152 @@ public class WorldRender {
         return v - (float) Math.floor(v);
     }
 
-    // ---------- коса (как у Некрофоса) ----------
-    private static final float HPX = -3.5f, HPY = 2.8f; // точка хвата (центр вращения), остриё в (0,0)
+    // ---------- коса (3D, как у Некрофоса) ----------
+    private static final float HPX = -3.5f, HPY = 2.8f; // хват (центр вращения), остриё лезвия в (0,0)
+    private static final int BN = 14;
+    private static final float[][] BO = new float[BN + 1][];
+    private static final float[][] BI = new float[BN + 1][];
+    private static final float SWING = 0.9f;
+    private static final float LX = 0.35f, LY = 0.8f, LZ = 0.5f;
+
+    static {
+        for (int i = 0; i <= BN; i++) {
+            float u = i / (float) BN;
+            BO[i] = bez(-0.7f, 1.4f, 0.2f, 1.3f, 0f, 0f, u);
+            BI[i] = bez(-0.7f, 1.4f, -0.3f, 0.8f, 0f, 0f, u);
+        }
+    }
 
     private static float[] bez(float x0, float y0, float cx, float cy, float x1, float y1, float t) {
         float u = 1 - t;
         return new float[]{u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1};
     }
 
-    private static void sv(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz, float S,
-                           float lx, float ly, float ang, int col) {
+    /** Локальная точка (в плоскости косы + глубина) в мировые координаты с поворотом вокруг хвата. */
+    private static float[] w3(float ox, float oy, float oz, float rhx, float rhz, float S,
+                              float lx, float ly, float lz, float ang, float yoff) {
         float dx = lx - HPX, dy = ly - HPY;
         float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
         float rx = HPX + dx * ca - dy * sa, ry = HPY + dx * sa + dy * ca;
-        vtx(b, m, x + rhx * rx * S, y + ry * S, z + rhz * rx * S, col);
+        return new float[]{ox + rhx * rx * S - rhz * lz * S, oy + ry * S + yoff, oz + rhz * rx * S + rhx * lz * S};
+    }
+
+    private static void tri3(BufferBuilder b, Matrix4f m, float[] p0, float[] p1, float[] p2, int rgb, float a) {
+        float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+        float vx = p2[0] - p0[0], vy = p2[1] - p0[1], vz = p2[2] - p0[2];
+        float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        float l = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        float sh = 0.55f;
+        if (l > 1e-8f) sh = 0.45f + 0.55f * Math.abs((nx * LX + ny * LY + nz * LZ) / l);
+        int col = argb(mixc(0x000000, rgb, Math.min(1f, sh + 0.1f)), a);
+        vtx(b, m, p0[0], p0[1], p0[2], col);
+        vtx(b, m, p1[0], p1[1], p1[2], col);
+        vtx(b, m, p2[0], p2[1], p2[2], col);
+    }
+
+    private static void cyl(BufferBuilder b, Matrix4f m, float ox, float oy, float oz, float rhx, float rhz, float S,
+                            float ang, float yoff, float ax, float ay, float fx, float fy, float r, int rgb, float a) {
+        float dx = fx - ax, dy = fy - ay;
+        float l = (float) Math.sqrt(dx * dx + dy * dy);
+        float px = -dy / l, py = dx / l;
+        int seg = 8;
+        for (int k = 0; k < seg; k++) {
+            double t0 = k * Math.PI * 2 / seg, t1 = (k + 1) * Math.PI * 2 / seg;
+            float c0 = (float) Math.cos(t0) * r, s0 = (float) Math.sin(t0) * r;
+            float c1 = (float) Math.cos(t1) * r, s1 = (float) Math.sin(t1) * r;
+            float[] a0 = w3(ox, oy, oz, rhx, rhz, S, ax + px * c0, ay + py * c0, s0, ang, yoff);
+            float[] a1 = w3(ox, oy, oz, rhx, rhz, S, ax + px * c1, ay + py * c1, s1, ang, yoff);
+            float[] f0 = w3(ox, oy, oz, rhx, rhz, S, fx + px * c0, fy + py * c0, s0, ang, yoff);
+            float[] f1 = w3(ox, oy, oz, rhx, rhz, S, fx + px * c1, fy + py * c1, s1, ang, yoff);
+            tri3(b, m, a0, a1, f1, rgb, a);
+            tri3(b, m, a0, f1, f0, rgb, a);
+        }
+    }
+
+    private static void scytheMesh(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz, float S,
+                                   float ang, float yoff, float a, int rgb) {
+        // древко, воротник у лезвия и навершие
+        float ax = HPX - 0.35f, ay = HPY + 0.18f, fx = -0.7f, fy = 1.4f;
+        float dx = fx - ax, dy = fy - ay;
+        float l = (float) Math.sqrt(dx * dx + dy * dy);
+        float ux = dx / l, uy = dy / l;
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, ax, ay, fx, fy, 0.075f, 0x4A3A60, a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, fx - ux * 0.3f, fy - uy * 0.3f, fx, fy, 0.13f, mixc(rgb, 0x000000, 0.35f), a);
+        cyl(b, m, x, y, z, rhx, rhz, S, ang, yoff, ax - ux * 0.2f, ay - uy * 0.2f, ax, ay, 0.1f, mixc(rgb, 0x000000, 0.45f), a);
+
+        // лезвие с толщиной: две грани и боковые стенки
+        float[][] oF = new float[BN + 1][], oB = new float[BN + 1][], iF = new float[BN + 1][], iB = new float[BN + 1][];
+        for (int i = 0; i <= BN; i++) {
+            float th = 0.11f * (1f - 0.7f * i / BN);
+            oF[i] = w3(x, y, z, rhx, rhz, S, BO[i][0], BO[i][1], th, ang, yoff);
+            oB[i] = w3(x, y, z, rhx, rhz, S, BO[i][0], BO[i][1], -th, ang, yoff);
+            iF[i] = w3(x, y, z, rhx, rhz, S, BI[i][0], BI[i][1], th, ang, yoff);
+            iB[i] = w3(x, y, z, rhx, rhz, S, BI[i][0], BI[i][1], -th, ang, yoff);
+        }
+        int face = mixWhite(rgb, 0.45f), edge = rgb;
+        for (int i = 0; i < BN; i++) {
+            tri3(b, m, oF[i], iF[i], oF[i + 1], face, a);
+            tri3(b, m, iF[i], iF[i + 1], oF[i + 1], face, a);
+            tri3(b, m, oB[i], iB[i], oB[i + 1], face, a);
+            tri3(b, m, iB[i], iB[i + 1], oB[i + 1], face, a);
+            tri3(b, m, oF[i], oB[i], oF[i + 1], edge, a);
+            tri3(b, m, oB[i], oB[i + 1], oF[i + 1], edge, a);
+            tri3(b, m, iF[i], iB[i], iF[i + 1], edge, a);
+            tri3(b, m, iB[i], iB[i + 1], iF[i + 1], edge, a);
+        }
+        tri3(b, m, oF[0], oB[0], iF[0], edge, a);
+        tri3(b, m, oB[0], iB[0], iF[0], edge, a);
+    }
+
+    private static float[] gp(float ox, float oy, float oz, float rhx, float rhz, float S, float[] pt, float ang, float yoff) {
+        return w3(ox, oy, oz, rhx, rhz, S, -0.25f + (pt[0] + 0.25f) * 1.2f, 0.7f + (pt[1] - 0.7f) * 1.2f, 0f, ang, yoff);
+    }
+
+    /** Мягкое свечение вокруг лезвия и призрачный след взмаха. */
+    private static void bladeGlow(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz, float S,
+                                  float ang, float yoff, float a, int rgb) {
+        int col = argb(rgb, a);
+        for (int i = 0; i < BN; i++) {
+            float[] o0 = gp(x, y, z, rhx, rhz, S, BO[i], ang, yoff), o1 = gp(x, y, z, rhx, rhz, S, BO[i + 1], ang, yoff);
+            float[] i0 = gp(x, y, z, rhx, rhz, S, BI[i], ang, yoff), i1 = gp(x, y, z, rhx, rhz, S, BI[i + 1], ang, yoff);
+            vtx(b, m, o0[0], o0[1], o0[2], col);
+            vtx(b, m, i0[0], i0[1], i0[2], col);
+            vtx(b, m, o1[0], o1[1], o1[2], col);
+            vtx(b, m, i0[0], i0[1], i0[2], col);
+            vtx(b, m, i1[0], i1[1], i1[2], col);
+            vtx(b, m, o1[0], o1[1], o1[2], col);
+        }
     }
 
     private static void drawScythe(BufferBuilder b, Matrix4f m, Config c, Scythe sc, long now, Vector3f rh) {
         float t = (now - sc.t0) / 1000f;
-        if (t < 0f || t > 1.5f) return;
-        float tt = t / 0.22f;
-        float phi;
-        if (tt < 1f) {
-            phi = 110f * (1f - tt * tt * tt);
+        if (t < 0f || t > 2.5f) return;
+        float tt = Math.min(1f, t / SWING);
+        float phi, yoff;
+        if (t < SWING) {
+            float e = tt * tt * tt; // медленно сверху, всё быстрее к низу
+            phi = 135f * (1f - e);
+            yoff = 2.4f * (1f - e);
         } else {
-            float k = t - 0.22f;
-            phi = -9f * (float) (Math.exp(-7 * k) * Math.cos(k * 28));
+            float k = t - SWING;
+            phi = -7f * (float) (Math.exp(-6 * k) * Math.cos(k * 25));
+            yoff = 0f;
         }
         float alpha;
-        if (t < 0.08f) alpha = t / 0.08f;
-        else if (t < 1.0f) alpha = 1f;
-        else alpha = Math.max(0f, 1f - (t - 1.0f) / 0.5f);
+        if (t < 0.3f) alpha = t / 0.3f;
+        else if (t < 1.7f) alpha = 1f;
+        else alpha = Math.max(0f, 1f - (t - 1.7f) / 0.8f);
 
         int rgb = killRgb(c, 0f);
         float S = 0.5f * c.killSize;
         float x = (float) sc.x, y = (float) sc.y, z = (float) sc.z;
-
-        // след от взмаха (призраки лезвия)
-        if (tt < 1.4f) {
+        if (t < SWING && tt > 0.55f) {
             for (int g = 4; g >= 1; g--) {
-                float gp = phi + g * 9f;
-                scytheShape(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(gp), alpha * (0.38f / g), rgb, false);
+                bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi + g * 7f), yoff + g * 0.1f, alpha * (0.4f / g), rgb);
             }
         }
-        scytheShape(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), alpha, rgb, true);
-    }
-
-    private static void scytheShape(BufferBuilder b, Matrix4f m, float x, float y, float z, float rhx, float rhz,
-                                    float S, float ang, float a, int rgb, boolean withPole) {
-        // древко
-        if (withPole) {
-            float ax = HPX - 0.35f, ay = HPY + 0.18f, fx = -0.7f, fy = 1.4f;
-            float dx = fx - ax, dy = fy - ay;
-            float l = (float) Math.sqrt(dx * dx + dy * dy);
-            float nx = -dy / l * 0.07f, ny = dx / l * 0.07f;
-            int pole = argb(0x2E2638, a);
-            int poleLight = argb(0x6A5C80, a);
-            sv(b, m, x, y, z, rhx, rhz, S, ax - nx, ay - ny, ang, pole);
-            sv(b, m, x, y, z, rhx, rhz, S, ax + nx, ay + ny, ang, poleLight);
-            sv(b, m, x, y, z, rhx, rhz, S, fx + nx, fy + ny, ang, poleLight);
-            sv(b, m, x, y, z, rhx, rhz, S, ax - nx, ay - ny, ang, pole);
-            sv(b, m, x, y, z, rhx, rhz, S, fx + nx, fy + ny, ang, poleLight);
-            sv(b, m, x, y, z, rhx, rhz, S, fx - nx, fy - ny, ang, pole);
-        }
-        // лезвие: полумесяц между двумя кривыми, с мягким свечением
-        int n = 14;
-        int edge = argb(rgb, a * 0.95f);
-        int body = argb(mixWhite(rgb, 0.55f), a * 0.95f);
-        int glowOut = argb(rgb, a * 0.18f);
-        for (int pass = 0; pass < 2; pass++) {
-            float grow = pass == 0 ? 1.18f : 1f;
-            for (int i = 0; i < n; i++) {
-                float u0 = i / (float) n, u1 = (i + 1) / (float) n;
-                float[] o0 = bez(-0.7f, 1.4f, 0.2f, 1.3f, 0f, 0f, u0);
-                float[] o1 = bez(-0.7f, 1.4f, 0.2f, 1.3f, 0f, 0f, u1);
-                float[] i0 = bez(-0.7f, 1.4f, -0.3f, 0.8f, 0f, 0f, u0);
-                float[] i1 = bez(-0.7f, 1.4f, -0.3f, 0.8f, 0f, 0f, u1);
-                if (pass == 0) {
-                    float cx = -0.25f, cy = 0.7f;
-                    o0 = new float[]{cx + (o0[0] - cx) * grow, cy + (o0[1] - cy) * grow};
-                    o1 = new float[]{cx + (o1[0] - cx) * grow, cy + (o1[1] - cy) * grow};
-                    i0 = new float[]{cx + (i0[0] - cx) * grow, cy + (i0[1] - cy) * grow};
-                    i1 = new float[]{cx + (i1[0] - cx) * grow, cy + (i1[1] - cy) * grow};
-                }
-                int co = pass == 0 ? glowOut : edge;
-                int ci = pass == 0 ? glowOut : body;
-                sv(b, m, x, y, z, rhx, rhz, S, o0[0], o0[1], ang, co);
-                sv(b, m, x, y, z, rhx, rhz, S, i0[0], i0[1], ang, ci);
-                sv(b, m, x, y, z, rhx, rhz, S, o1[0], o1[1], ang, co);
-                sv(b, m, x, y, z, rhx, rhz, S, i0[0], i0[1], ang, ci);
-                sv(b, m, x, y, z, rhx, rhz, S, i1[0], i1[1], ang, ci);
-                sv(b, m, x, y, z, rhx, rhz, S, o1[0], o1[1], ang, co);
-            }
-        }
+        bladeGlow(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), yoff, alpha * 0.35f, rgb);
+        scytheMesh(b, m, x, y, z, rh.x, rh.z, S, (float) Math.toRadians(phi), yoff, alpha, rgb);
     }
 
     // ---------- надписи: комбо и счётчик убийств ----------
@@ -1041,6 +1252,7 @@ public class WorldRender {
     }
 
     private static void drawLabels(Matrix4f m, Config c, long now, Vector3f right, Vector3f up) {
+        int prevTex = RenderSystem.getShaderTexture(0);
         RenderSystem.setShader(GameRenderer::getPositionTexColorProgram);
         for (Label l : labels) {
             float age = (now - l.t0) / 1000f;
@@ -1066,6 +1278,7 @@ public class WorldRender {
             texQuad(tx.outId, m, cx, cy, cz, rr, uu, hw * 0.5f, hh * 0.5f, new int[]{w, w, w, w});
             texQuad(tx.fillId, m, cx, cy, cz, rr, uu, hw * 0.5f, hh * 0.5f, labelCols(l, c, now, fade));
         }
+        RenderSystem.setShaderTexture(0, prevTex);
     }
 
     // ---------- все падающие штуки одним буфером ----------

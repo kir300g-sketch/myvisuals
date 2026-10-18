@@ -10,6 +10,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -19,14 +20,14 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Свой тотем: мод сам делает ресурспак с картинкой выбранного разрешения (до 512x512),
- * включает его и перезагружает ресурсы. Тотем сохраняет чёткость везде: в инвентаре, в руке, при срабатывании.
+ * Свой тотем: картинка (до 512x512) и звук срабатывания (.ogg).
+ * Мод делает ресурспак, включает его и перезагружает ресурсы, перезаходить в игру не нужно.
  */
 public final class Totem {
     private Totem() {
     }
 
-    public static String status = "Картинка не загружена";
+    public static String status = "Файлы не загружены";
 
     private static final String PACK = "MyVisualsTotem";
     private static final int[] RES = {64, 128, 256, 512};
@@ -40,6 +41,14 @@ public final class Totem {
         return dir().resolve("totem.png");
     }
 
+    public static Path soundFile() {
+        return dir().resolve("totem_sound.ogg");
+    }
+
+    private static boolean hasSound() {
+        return Files.exists(soundFile());
+    }
+
     private static Path packRoot() {
         return MinecraftClient.getInstance().runDirectory.toPath().resolve("resourcepacks").resolve(PACK);
     }
@@ -48,22 +57,43 @@ public final class Totem {
         // ничего делать не нужно: пак остаётся включённым между запусками
     }
 
+    // ---------- загрузка файлов ----------
     public static void loadDropped(List<Path> paths) {
         for (Path p : paths) {
-            if (p.toString().toLowerCase().endsWith(".png")) {
-                loadPath(p, true);
+            String n = p.toString().toLowerCase();
+            if (n.endsWith(".png")) {
+                loadPicture(p, true);
+                return;
+            }
+            if (n.endsWith(".ogg")) {
+                loadSound(p);
                 return;
             }
         }
-        status = "Нужен файл .png";
+        status = "Нужен .png (картинка) или .ogg (звук)";
     }
 
     public static void loadFromConfigDir() {
-        if (Files.exists(file())) loadPath(file(), false);
-        else status = "Нет файла config/myvisuals/totem.png";
+        try {
+            boolean any = false;
+            if (Files.exists(file())) {
+                image = ImageIO.read(file().toFile());
+                any = image != null;
+            }
+            if (hasSound()) any = true;
+            if (!any) {
+                status = "В config/myvisuals нет totem.png или totem_sound.ogg";
+                return;
+            }
+            Config.I.totemEnabled = true;
+            Config.save();
+            apply();
+        } catch (Exception e) {
+            status = "Ошибка: " + e.getMessage();
+        }
     }
 
-    private static void loadPath(Path p, boolean copy) {
+    private static void loadPicture(Path p, boolean copy) {
         try {
             BufferedImage img = ImageIO.read(p.toFile());
             if (img == null) {
@@ -79,6 +109,43 @@ public final class Totem {
             image = img;
             Config.I.totemEnabled = true;
             Config.save();
+            apply();
+        } catch (Exception e) {
+            status = "Ошибка: " + e.getMessage();
+        }
+    }
+
+    private static void loadSound(Path p) {
+        try (InputStream in = Files.newInputStream(p)) {
+            byte[] h = in.readNBytes(4);
+            if (h.length < 4 || h[0] != 'O' || h[1] != 'g' || h[2] != 'g' || h[3] != 'S') {
+                status = "Нужен OGG (Vorbis). Сконвертируй WAV/MP3 в .ogg";
+                return;
+            }
+            Files.createDirectories(dir());
+            if (!p.toAbsolutePath().equals(soundFile().toAbsolutePath())) {
+                Files.copy(p, soundFile(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            Config.I.totemEnabled = true;
+            Config.save();
+            apply();
+        } catch (Exception e) {
+            status = "Ошибка: " + e.getMessage();
+        }
+    }
+
+    // ---------- управление ----------
+    private static void ensureImage() throws IOException {
+        if (image == null && Files.exists(file())) image = ImageIO.read(file().toFile());
+    }
+
+    private static void apply() {
+        try {
+            ensureImage();
+            if (image == null && !hasSound()) {
+                status = "Нечего применять: загрузи картинку или звук";
+                return;
+            }
             generatePack();
             enable(true);
         } catch (Exception e) {
@@ -88,51 +155,45 @@ public final class Totem {
 
     /** Перегенерировать пак (например, после смены разрешения). */
     public static void regenerate() {
-        try {
-            if (image == null && Files.exists(file())) image = ImageIO.read(file().toFile());
-            if (image == null) {
-                status = "Сначала загрузи картинку";
-                return;
-            }
-            generatePack();
-            if (Config.I.totemEnabled) enable(true);
-        } catch (Exception e) {
-            status = "Ошибка: " + e.getMessage();
-        }
+        if (Config.I.totemEnabled) apply();
     }
 
     public static void setEnabled(boolean v) {
         Config.I.totemEnabled = v;
         Config.save();
+        if (v) apply();
+        else enable(false);
+    }
+
+    public static void resetPicture() {
         try {
-            if (v) {
-                if (image == null && Files.exists(file())) image = ImageIO.read(file().toFile());
-                if (image == null) {
-                    status = "Сначала загрузи картинку";
-                    Config.I.totemEnabled = false;
-                    return;
-                }
-                generatePack();
-                enable(true);
-            } else {
-                enable(false);
-            }
+            image = null;
+            Files.deleteIfExists(file());
+            afterReset();
         } catch (Exception e) {
             status = "Ошибка: " + e.getMessage();
         }
     }
 
-    public static void reset() {
-        image = null;
-        Config.I.totemEnabled = false;
-        Config.save();
+    public static void resetSound() {
         try {
-            enable(false);
-            Files.deleteIfExists(file());
-            deleteRecursive(packRoot());
-            status = "Сброшено";
+            Files.deleteIfExists(soundFile());
+            afterReset();
         } catch (Exception e) {
             status = "Ошибка: " + e.getMessage();
+        }
+    }
+
+    private static void afterReset() throws IOException {
+        boolean hasPic = image != null || Files.exists(file());
+        if (hasPic || hasSound()) {
+            apply();
+        } else {
+            Config.I.totemEnabled = false;
+            Config.save();
+            enable(false);
+            deleteRecursive(packRoot());
+            status = "Сброшено";
         }
     }
 
@@ -157,25 +218,40 @@ public final class Totem {
     }
 
     private static void generatePack() throws IOException {
-        int idx = Math.max(0, Math.min(RES.length - 1, Config.I.totemRes));
-        int R = RES[idx];
-        double s = Math.min(R / (double) image.getWidth(), R / (double) image.getHeight());
-        int w = Math.max(1, (int) Math.round(image.getWidth() * s));
-        int h = Math.max(1, (int) Math.round(image.getHeight() * s));
-        BufferedImage fit = resize(image, w, h);
-
-        BufferedImage sq = new BufferedImage(R, R, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = sq.createGraphics();
-        g.drawImage(fit, (R - w) / 2, (R - h) / 2, null);
-        g.dispose();
-
         Path root = packRoot();
-        Path tex = root.resolve("assets/minecraft/textures/item/totem_of_undying.png");
-        Files.createDirectories(tex.getParent());
+        Files.createDirectories(root);
         Files.writeString(root.resolve("pack.mcmeta"),
                 "{\"pack\":{\"pack_format\":34,\"description\":\"My Visuals totem\"}}");
-        ImageIO.write(sq, "png", tex.toFile());
-        status = "Пак создан (" + R + "x" + R + "), перезагрузка ресурсов...";
+
+        Path tex = root.resolve("assets/minecraft/textures/item/totem_of_undying.png");
+        String info = "";
+        if (image != null) {
+            int idx = Math.max(0, Math.min(RES.length - 1, Config.I.totemRes));
+            int R = RES[idx];
+            double s = Math.min(R / (double) image.getWidth(), R / (double) image.getHeight());
+            int w = Math.max(1, (int) Math.round(image.getWidth() * s));
+            int h = Math.max(1, (int) Math.round(image.getHeight() * s));
+            BufferedImage fit = resize(image, w, h);
+            BufferedImage sq = new BufferedImage(R, R, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = sq.createGraphics();
+            g.drawImage(fit, (R - w) / 2, (R - h) / 2, null);
+            g.dispose();
+            Files.createDirectories(tex.getParent());
+            ImageIO.write(sq, "png", tex.toFile());
+            info += "картинка " + R + "x" + R + " ";
+        } else {
+            Files.deleteIfExists(tex);
+        }
+
+        Path snd = root.resolve("assets/minecraft/sounds/item/totem/use.ogg");
+        if (hasSound()) {
+            Files.createDirectories(snd.getParent());
+            Files.copy(soundFile(), snd, StandardCopyOption.REPLACE_EXISTING);
+            info += "звук ";
+        } else {
+            Files.deleteIfExists(snd);
+        }
+        status = "Пак создан: " + info + "(перезагрузка ресурсов...)";
     }
 
     private static void deleteRecursive(Path root) throws IOException {
@@ -212,6 +288,6 @@ public final class Totem {
         }
         mc.options.write();
         mc.reloadResources();
-        status = on ? "Тотем применён" : "Тотем выключен";
+        status = on ? "Применено" : "Выключено";
     }
 }

@@ -6,7 +6,9 @@
     "HeldItemRendererMixin",
     "WorldRendererMixin",
     "BackgroundRendererMixin",
-    "GameRendererMixin"
+    "GameRendererMixin",
+    "EntityMixin",
+    "CameraMixin"
   ],
   "injectors": {
     "defaultRequire": 0
