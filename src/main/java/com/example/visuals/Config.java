@@ -147,7 +147,7 @@ public class Config {
     // Цели для эффекта убийства и счётчика: 0 только игроки, 1 игроки и мобы, 2 всё кроме животных
     public int killTargets = 1;
 
-    public boolean killGhost = true;
+    public boolean killGhost = false;
 
     // Физика предметов
     public boolean itemPhysics = false;
@@ -157,6 +157,29 @@ public class Config {
     public boolean testCopyGear = true;
     public boolean testRespawn = true;
     public float testDist = 3f;
+
+    // Форма кругов (0 круг, 1 сердце, 2 звезда, 3 пентаграмма)
+    public int jumpShape = 0;
+
+    // Небо: момент отрисовки (0 до земли, 1 до сущностей, 2 после воды)
+    public int skyMode = 0;
+
+    // Окружение
+    public boolean noFire = false;
+    public boolean timeEnabled = false;
+    public float timeOfDay = 6000f;
+
+    // Фрикам
+    public boolean freecamEnabled = false;
+    public int freecamKey = 295; // F6
+    public float freecamSpeed = 1f;
+
+    // Курсор
+    public int cursorFx = 0;
+    public float cursorSize = 1f;
+    public float cursorDensity = 1f;
+    public boolean cursorRainbow = true;
+    public float cursorHue = 0.8f;
 
     // Комбо
     public boolean comboEnabled = false;

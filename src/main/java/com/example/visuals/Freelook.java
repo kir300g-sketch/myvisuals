@@ -24,7 +24,7 @@ public final class Freelook {
 
     public static void tick(MinecraftClient mc) {
         Config c = Config.I;
-        if (!c.freelookEnabled || mc.player == null || mc.currentScreen != null) {
+        if (!c.freelookEnabled || mc.player == null || mc.currentScreen != null || Freecam.active) {
             if (active) stop(mc);
             wasDown = false;
             return;

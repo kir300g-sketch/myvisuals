@@ -128,7 +128,6 @@ public class VisualsScreen extends Screen {
         kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса"}, () -> c.killFx, i -> c.killFx = i));
         kill.opts.add(new Widgets.Choice("Цели", new String[]{"Только игроки", "Игроки и мобы", "Всё кроме животных"}, () -> c.killTargets, i -> c.killTargets = i));
         kill.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.killSize, v -> c.killSize = v));
-        kill.opts.add(new Widgets.Toggle("Призрак-жнец", () -> c.killGhost, v -> c.killGhost = v));
         kill.opts.add(new Widgets.Toggle("Счётчик на месте смерти", () -> c.killCounter, v -> c.killCounter = v));
         kill.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.killRainbow, v -> c.killRainbow = v));
         kill.opts.add(new Widgets.HueSlider("Цвет", () -> c.killHue, v -> c.killHue = v));
@@ -179,6 +178,7 @@ public class VisualsScreen extends Screen {
         Module circ = mod(vis, "Круги", () -> c.jumpEnabled, v -> c.jumpEnabled = v);
         circ.opts.add(new Widgets.Choice("Когда", new String[]{"Прыжок", "Приземление", "Оба"}, () -> c.jumpMode, i -> c.jumpMode = i));
         circ.opts.add(new Widgets.Slider("Размер", 0.8f, 3.5f, 1, () -> c.jumpSize, v -> c.jumpSize = v));
+        circ.opts.add(new Widgets.Choice("Форма", new String[]{"Круг", "Сердце", "Звезда", "Пентаграмма"}, () -> c.jumpShape, i -> c.jumpShape = i));
         circ.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.circRainbow, v -> c.circRainbow = v));
         circ.opts.add(new Widgets.HueSlider("Цвет", () -> c.circHue, v -> c.circHue = v));
 
@@ -208,6 +208,11 @@ public class VisualsScreen extends Screen {
         free.opts.add(new Widgets.Bind("Клавиша", () -> c.freelookKey, i -> c.freelookKey = i));
         free.opts.add(new Widgets.Toggle("Третье лицо при включении", () -> c.freelookThird, v -> c.freelookThird = v));
 
+        Module fcam = mod(vis, "Фрикам", () -> c.freecamEnabled, v -> c.freecamEnabled = v);
+        fcam.opts.add(new Widgets.Header("Фоторежим: не проходит сквозь стены"));
+        fcam.opts.add(new Widgets.Bind("Клавиша", () -> c.freecamKey, i -> c.freecamKey = i));
+        fcam.opts.add(new Widgets.Slider("Скорость", 0.2f, 4f, 1, () -> c.freecamSpeed, v -> c.freecamSpeed = v));
+
         Module arm = mod(vis, "Броня (HUD)", () -> c.hudArmor.enabled, v -> c.hudArmor.enabled = v);
         arm.opts.add(new Widgets.Header("Перетаскивай мышью"));
         arm.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.hudArmor.scale, v -> c.hudArmor.scale = v));
@@ -235,10 +240,15 @@ public class VisualsScreen extends Screen {
 
         Module sky = mod(world, "Небо", () -> c.skyEnabled, v -> c.skyEnabled = v);
         sky.opts.add(new Widgets.Choice("Стиль", SkyFx.STYLES, () -> c.skyStyle, i -> c.skyStyle = i));
+        sky.opts.add(new Widgets.Choice("Момент рисования", new String[]{"До земли", "До сущностей", "После воды"}, () -> c.skyMode, i -> c.skyMode = i));
         sky.opts.add(new Widgets.Slider("Вращение", 0f, 2f, 2, () -> c.skySpin, v -> c.skySpin = v));
         sky.opts.add(new Widgets.Slider("Яркость", 0.3f, 1f, 2, () -> c.skyBright, v -> c.skyBright = v));
 
         mod(world, "Физика предметов", () -> c.itemPhysics, v -> c.itemPhysics = v);
+        mod(world, "Убрать огонь на экране", () -> c.noFire, v -> c.noFire = v);
+        Module time = mod(world, "Время суток", () -> c.timeEnabled, v -> c.timeEnabled = v);
+        time.opts.add(new Widgets.Slider("Время (0-24000)", 0, 24000, 0, () -> c.timeOfDay, v -> c.timeOfDay = v));
+        time.opts.add(new Widgets.Header("6000 день, 12500 закат, 18000 ночь"));
 
         // ---- Effects ----
         Category fx = cat("Effects");
@@ -282,6 +292,13 @@ public class VisualsScreen extends Screen {
             c.guiX = 0f;
             c.guiY = 0f;
         }));
+
+        Module cur = mod(ui, "Курсор", null, null);
+        cur.opts.add(new Widgets.Choice("Эффект", CursorFx.NAMES, () -> c.cursorFx, i -> c.cursorFx = i));
+        cur.opts.add(new Widgets.Slider("Размер", 0.5f, 3f, 1, () -> c.cursorSize, v -> c.cursorSize = v));
+        cur.opts.add(new Widgets.Slider("Плотность", 0.3f, 3f, 1, () -> c.cursorDensity, v -> c.cursorDensity = v));
+        cur.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.cursorRainbow, v -> c.cursorRainbow = v));
+        cur.opts.add(new Widgets.HueSlider("Оттенок", () -> c.cursorHue, v -> c.cursorHue = v));
 
         order = new int[cats.size()];
         for (int i = 0; i < order.length; i++) order[i] = i;

@@ -68,11 +68,15 @@ public class WorldRender {
     private static class Ring {
         final double x, y, z;
         final long t0, dur;
-        final float maxR;
-        final int rgb; // -1 = градиент цвета кругов
+        final float maxR, yaw;
+        final int rgb, shape; // rgb -1 = градиент цвета кругов; shape: 0 круг, 1 сердце, 2 звезда, 3 пентаграмма
         final boolean splash;
 
         Ring(double x, double y, double z, long t0, float maxR, long dur, int rgb, boolean splash) {
+            this(x, y, z, t0, maxR, dur, rgb, splash, 0, 0f);
+        }
+
+        Ring(double x, double y, double z, long t0, float maxR, long dur, int rgb, boolean splash, int shape, float yaw) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -81,6 +85,8 @@ public class WorldRender {
             this.dur = dur;
             this.rgb = rgb;
             this.splash = splash;
+            this.shape = shape;
+            this.yaw = yaw;
         }
     }
 
@@ -111,7 +117,8 @@ public class WorldRender {
     }
 
     private static class Scythe {
-        double x, y, z;
+        double x, y, z, hy;
+        float rx = 1f, rz = 0f;
         long t0;
         boolean impacted;
     }
@@ -435,12 +442,13 @@ public class WorldRender {
             boolean takeoff = wasGround && !ground && p.getVelocity().y > 0.1;
             boolean landing = !wasGround && ground && airTicks >= 4;
             if ((takeoff && (c.jumpMode == 0 || c.jumpMode == 2)) || (landing && (c.jumpMode == 1 || c.jumpMode == 2))) {
-                rings.add(new Ring(p.getX(), p.getY() + 0.03, p.getZ(), now, c.jumpSize, 900, -1, false));
+                rings.add(new Ring(p.getX(), p.getY() + 0.03, p.getZ(), now, c.jumpSize, 900, -1, false, c.jumpShape, (float) Math.toRadians(p.getYaw())));
             }
         }
         if (ground) airTicks = 0;
         wasGround = ground;
         rings.removeIf(r -> now - r.t0 > r.dur);
+        if (c.timeEnabled) mc.world.setTimeOfDay((long) c.timeOfDay);
 
         // комбо: сброс по таймеру и по урону
         if (combo > 0 && now - lastHit > c.comboReset * 1000) combo = 0;
@@ -502,6 +510,9 @@ public class WorldRender {
             s.x = w.x;
             s.y = w.y;
             s.z = w.z;
+            s.hy = w.y + w.h * 0.8;
+            s.rx = curRhx;
+            s.rz = curRhz;
             s.t0 = now;
             scythes.add(s);
         } else if (c.killCounter) {
@@ -518,9 +529,9 @@ public class WorldRender {
             if (t < SWING_END) spawnWisps(s, c, t);
             if (!s.impacted && age >= 1000) {
                 s.impacted = true;
-                killBurst(s.x, s.y + 0.4, s.z, c);
+                killBurst(s.x, s.hy, s.z, c);
                 rings.add(new Ring(s.x, s.y + 0.03, s.z, now, 2.2f * c.killSize, 850, killRgb(c, 0f), true));
-                if (c.killCounter) spawnKillLabel(s.x, s.y + 1.0, s.z, now);
+                if (c.killCounter) spawnKillLabel(s.x, s.hy + 0.25, s.z, now);
             }
             if (age > 2700) it.remove();
         }
@@ -531,13 +542,13 @@ public class WorldRender {
         float[] pose = scythePose(t);
         float ang = (float) Math.toRadians(pose[0]);
         float ct = (float) Math.cos(TILT), st = (float) Math.sin(TILT);
-        float prx = curRhx * ct - curRhz * st, prz = curRhx * st + curRhz * ct;
+        float prx = sc.rx * ct - sc.rz * st, prz = sc.rx * st + sc.rz * ct;
         float S = 0.5f * c.killSize;
         for (int k = 0; k < 3 && sparks.size() < 700; k++) {
             int i = RNG.nextInt(BN + 1);
             float u = RNG.nextFloat();
             float px = BLO[i][0] * (1 - u) + BLI[i][0] * u, py = BLO[i][1] * (1 - u) + BLI[i][1] * u;
-            float[] w = w3((float) sc.x, (float) sc.y, (float) sc.z, prx, prz, S, px, py, 0f, ang, pose[1]);
+            float[] w = w3((float) sc.x, (float) sc.hy, (float) sc.z, prx, prz, S, px, py, 0f, ang, pose[1]);
             Spark sp = new Spark();
             sp.x = w[0];
             sp.y = w[1];
@@ -774,7 +785,7 @@ public class WorldRender {
         RenderSystem.disableCull();
         RenderSystem.depthMask(false);
 
-        if (c.skyEnabled) {
+        if (c.skyEnabled && c.skyMode == 2) {
             SkyFx.draw(m, cp, mc.gameRenderer.getFarPlaneDistance() * 0.9f, now);
         }
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
@@ -786,7 +797,7 @@ public class WorldRender {
         if (rh.lengthSquared() > 1e-6f) rh.normalize();
         else rh.set(1, 0, 0);
 
-        if (c.ribbonEnabled) drawRibbon(m, c, px, py, pz, now);
+        if (c.ribbonEnabled) drawRibbon(m, c, px, py, pz, now, cp);
         if (!rings.isEmpty()) drawRings(m, c, now);
         if (c.trajEnabled) drawTrajectory(m, c, p, mc, td, px, py, pz, cp, right, up);
         double top = py + p.getHeight();
@@ -798,6 +809,33 @@ public class WorldRender {
         }
         if (!labels.isEmpty()) drawLabels(m, c, now, right, up);
 
+        RenderSystem.depthMask(true);
+        RenderSystem.enableCull();
+        RenderSystem.disableBlend();
+        RenderSystem.setShaderTexture(0, prevTex0);
+        if (prevShader != null) RenderSystem.setShader(() -> prevShader);
+        ms.pop();
+    }
+
+    /** Небо в ранний момент кадра (до земли или до сущностей): не пересекается с частицами и подбором предметов. */
+    public static void renderSkyStage(WorldRenderContext ctx, int stage) {
+        Config c = Config.I;
+        if (!c.skyEnabled || c.skyMode != stage) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.world == null) return;
+        MatrixStack ms = ctx.matrixStack();
+        if (ms == null) return;
+        Vec3d cp = ctx.camera().getPos();
+        ShaderProgram prevShader = RenderSystem.getShader();
+        int prevTex0 = RenderSystem.getShaderTexture(0);
+        ms.push();
+        ms.translate(-cp.x, -cp.y, -cp.z);
+        Matrix4f m = ms.peek().getPositionMatrix();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableCull();
+        RenderSystem.depthMask(false);
+        SkyFx.draw(m, cp, mc.gameRenderer.getFarPlaneDistance() * 0.9f, System.currentTimeMillis());
         RenderSystem.depthMask(true);
         RenderSystem.enableCull();
         RenderSystem.disableBlend();
@@ -1114,6 +1152,10 @@ public class WorldRender {
     private static final float[][] HNI = curve(150, 105, 175, 70, 205, 60, 232, 62, HN);
     private static final float[][] HKO = curve(468, 328, 500, 295, 540, 320, 520, 358, HN);
     private static final float[][] HKI = curve(472, 345, 498, 320, 515, 332, 512, 352, HN);
+    private static final float[][] SP1O = curve(112, 60, 106, 45, 101, 32, 98, 20, 6);
+    private static final float[][] SP1I = curve(124, 63, 116, 47, 108, 33, 98, 20, 6);
+    private static final float[][] SP2O = curve(130, 58, 134, 42, 138, 30, 142, 18, 6);
+    private static final float[][] SP2I = curve(138, 62, 140, 46, 141, 32, 142, 18, 6);
 
     /** Локальная точка в мировые координаты: базовый наклон, затем вращение вокруг хвата. */
     private static float[] w3(float ox, float oy, float oz, float rhx, float rhz, float S,
@@ -1122,7 +1164,9 @@ public class WorldRender {
         float dx = bx - HPX, dy = by - HPY;
         float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
         float rx = HPX + dx * ca - dy * sa, ry = HPY + dx * sa + dy * ca;
-        return new float[]{ox + rhx * rx * S - rhz * pz * S, oy + ry * S + yoff, oz + rhz * rx * S + rhx * pz * S};
+        return new float[]{ox + rhx * (rx * RC - ry * RS) * S - rhz * pz * S,
+                oy + (rx * RS + ry * RC) * S + yoff,
+                oz + rhz * (rx * RC - ry * RS) * S + rhx * pz * S};
     }
 
     private static void tri3(BufferBuilder b, Matrix4f m, float[] p0, float[] p1, float[] p2, int rgb, float a) {
@@ -1217,23 +1261,29 @@ public class WorldRender {
         bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, HNO, HNI, 0.07f, 0.02f, rgb, tip);
         bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, HKO, HKI, 0.07f, 0.05f, mixc(rgb, 0x000000, 0.2f), rgb);
 
-        // череп на основании лезвия
-        int bone = 0xE8D58A;
+        // череп на основании лезвия: черепная коробка, скулы, челюсть, глазницы, нос, зубы и костяные шипы
+        int bone = 0xE8D58A, boneDark = mixc(bone, 0x000000, 0.35f), hole = 0x14100A;
         float sx = lx(125), sy = ly(78);
-        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx, sy, 0f, 0.33f, 0.27f, 0.26f, bone, a);
-        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx + 0.03f, sy - 0.27f, 0f, 0.2f, 0.12f, 0.18f, bone, a);
-        float[][] eyes = {{lx(112), ly(75)}, {lx(137), ly(80)}};
-        for (float[] e : eyes) {
-            for (int side = -1; side <= 1; side += 2) {
-                float zz = side * 0.265f;
-                float[] q0 = w3(x, y, z, rhx, rhz, S, e[0] - 0.07f, e[1] - 0.08f, zz, ang, yoff);
-                float[] q1 = w3(x, y, z, rhx, rhz, S, e[0] + 0.07f, e[1] - 0.08f, zz, ang, yoff);
-                float[] q2 = w3(x, y, z, rhx, rhz, S, e[0] + 0.07f, e[1] + 0.08f, zz, ang, yoff);
-                float[] q3 = w3(x, y, z, rhx, rhz, S, e[0] - 0.07f, e[1] + 0.08f, zz, ang, yoff);
-                tri3(b, m, q0, q1, q2, 0x2A2410, a);
-                tri3(b, m, q0, q2, q3, 0x2A2410, a);
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx, sy, 0f, 0.32f, 0.27f, 0.25f, bone, a);
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx - 0.03f, sy - 0.2f, 0f, 0.22f, 0.14f, 0.2f, bone, a);
+        ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx + 0.02f, sy - 0.33f, 0f, 0.17f, 0.09f, 0.15f, boneDark, a);
+        for (int side = -1; side <= 1; side += 2) {
+            float zz = side * 0.2f;
+            ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(112), ly(74), zz, 0.085f, 0.1f, 0.05f, hole, a);
+            ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, lx(138), ly(79), zz, 0.085f, 0.1f, 0.05f, hole, a);
+            ellipsoid(b, m, x, y, z, rhx, rhz, S, ang, yoff, sx + 0.01f, sy - 0.1f, zz * 1.05f, 0.03f, 0.05f, 0.03f, hole, a);
+            for (int k = -2; k <= 2; k++) {
+                float tx0 = sx + 0.02f + k * 0.07f;
+                float[] q0 = w3(x, y, z, rhx, rhz, S, tx0 - 0.025f, sy - 0.34f, zz, ang, yoff);
+                float[] q1 = w3(x, y, z, rhx, rhz, S, tx0 + 0.025f, sy - 0.34f, zz, ang, yoff);
+                float[] q2 = w3(x, y, z, rhx, rhz, S, tx0 + 0.025f, sy - 0.26f, zz, ang, yoff);
+                float[] q3 = w3(x, y, z, rhx, rhz, S, tx0 - 0.025f, sy - 0.26f, zz, ang, yoff);
+                tri3(b, m, q0, q1, q2, 0xF2EBC8, a);
+                tri3(b, m, q0, q2, q3, 0xF2EBC8, a);
             }
         }
+        bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, SP1O, SP1I, 0.05f, 0.015f, bone, boneDark);
+        bladeShape(b, m, x, y, z, rhx, rhz, S, ang, yoff, a, SP2O, SP2I, 0.05f, 0.015f, bone, boneDark);
 
         // древко: изогнутое, коричневое
         int wood = 0x6B4A2E;
@@ -1254,8 +1304,10 @@ public class WorldRender {
                 mixWhite(mixc(rgb, 0xFFF08A, 0.5f), 0.3f), a);
     }
 
-    private static final float WIND = 0.4f, SWING_END = 1.0f;
-    private static final float TILT = (float) Math.toRadians(38);
+    private static final float WIND = 0.45f, SWING_END = 0.95f;
+    private static final float TILT = (float) Math.toRadians(20);
+    private static final float ROLL = (float) Math.toRadians(32);
+    private static final float RC = (float) Math.cos(ROLL), RS = (float) Math.sin(ROLL);
     private static float curRhx = 1f, curRhz = 0f;
 
     private static float[] gp(float ox, float oy, float oz, float rhx, float rhz, float S, float[] pt,
@@ -1412,28 +1464,24 @@ public class WorldRender {
         cylW(b, m, gx - nx * 0.22f, top - 0.05f, gz - nz * 0.22f, hand2[0], hand2[1], hand2[2], 0.07f, robe, ga);
     }
 
-    /** Поза косы: [угол, смещение по высоте, прозрачность]. Замах с задержкой, потом ускорение к удару. */
+    /** Поза косы: [угол, смещение, прозрачность]. Замах назад, затем рубящий диагональный удар через шею с ускорением. */
     private static float[] scythePose(float t) {
-        float phi, yoff;
+        float phi;
         if (t < WIND) {
             float u = t / WIND, e = 1f - (1f - u) * (1f - u);
-            phi = -100f - 25f * e;
-            yoff = 2.4f + 0.35f * e;
+            phi = -100f - 30f * e;
         } else if (t < SWING_END) {
             float u = (t - WIND) / (SWING_END - WIND);
-            float e = u * u * u; // медленно, затем всё быстрее к низу
-            phi = -125f * (1f - e);
-            yoff = 2.75f * (1f - e);
+            phi = -130f + 165f * (float) Math.pow(u, 2.2);
         } else {
             float k = t - SWING_END;
-            phi = 9f * (float) (Math.exp(-6 * k) * Math.cos(k * 25));
-            yoff = 0f;
+            phi = 35f - 7f * (1f - (float) Math.exp(-8 * k));
         }
         float alpha;
         if (t < 0.3f) alpha = t / 0.3f;
         else if (t < 1.9f) alpha = 1f;
         else alpha = Math.max(0f, 1f - (t - 1.9f) / 0.8f);
-        return new float[]{phi, yoff, alpha};
+        return new float[]{phi, 0f, alpha};
     }
 
     private static void drawScythe(BufferBuilder b, Matrix4f m, Config c, Scythe sc, long now, Vector3f rh) {
@@ -1441,23 +1489,22 @@ public class WorldRender {
         if (t < 0f || t > 2.7f) return;
         float[] pose = scythePose(t);
         float ang = (float) Math.toRadians(pose[0]), yoff = pose[1], alpha = pose[2];
-        // плоскость замаха наклонена: коса идёт сверху вниз по диагонали
+        // ориентация зафиксирована в момент убийства: коса не двигается вместе с камерой
         float ct = (float) Math.cos(TILT), st = (float) Math.sin(TILT);
-        float prx = rh.x * ct - rh.z * st, prz = rh.x * st + rh.z * ct;
+        float prx = sc.rx * ct - sc.rz * st, prz = sc.rx * st + sc.rz * ct;
         int rgb = killRgb(c, 0f);
         float S = 0.5f * c.killSize;
-        float x = (float) sc.x, y = (float) sc.y, z = (float) sc.z;
+        float x = (float) sc.x, y = (float) sc.hy, z = (float) sc.z;
 
-        if (t >= WIND * 0.6f && t < SWING_END + 0.1f) {
-            for (int g = 6; g >= 1; g--) {
-                float[] pp = scythePose(Math.max(0f, t - g * 0.025f));
-                bladeGlow(b, m, x, y, z, prx, prz, S, (float) Math.toRadians(pp[0]), pp[1], alpha * (0.45f / g), rgb, 1.15f);
+        if (t >= WIND * 0.7f && t < SWING_END + 0.12f) {
+            for (int g = 8; g >= 1; g--) {
+                float[] pp = scythePose(Math.max(0f, t - g * 0.02f));
+                bladeGlow(b, m, x, y, z, prx, prz, S, (float) Math.toRadians(pp[0]), pp[1], alpha * (0.5f / g), rgb, 1.12f);
             }
         }
         bladeGlow(b, m, x, y, z, prx, prz, S, ang, yoff, alpha * 0.35f, rgb, 1.15f);
         bladeGlow(b, m, x, y, z, prx, prz, S, ang, yoff, alpha * 0.16f, rgb, 1.45f);
         bladeGlow(b, m, x, y, z, prx, prz, S, ang, yoff, alpha * 0.07f, rgb, 1.9f);
-        if (c.killGhost) drawGhost(b, m, x, y, z, prx, prz, S, ang, yoff, alpha, rgb, now);
         scytheMesh(b, m, x, y, z, prx, prz, S, ang, yoff, alpha, rgb);
         veins(b, m, x, y, z, prx, prz, S, ang, yoff, alpha, rgb);
     }
@@ -1617,6 +1664,69 @@ public class WorldRender {
     }
 
     // ---------- круги ----------
+    private static final float[] STX = new float[10], STY = new float[10];
+    private static final float[] CCX = new float[48], CCY = new float[48];
+
+    static {
+        for (int i = 0; i < 10; i++) {
+            double a = -Math.PI / 2 + i * Math.PI / 5;
+            float r = (i % 2 == 0) ? 1f : 0.42f;
+            STX[i] = (float) Math.cos(a) * r;
+            STY[i] = (float) Math.sin(a) * r;
+        }
+        for (int i = 0; i < 48; i++) {
+            CCX[i] = (float) Math.cos(i * Math.PI * 2 / 48);
+            CCY[i] = (float) Math.sin(i * Math.PI * 2 / 48);
+        }
+    }
+
+    /** Контур произвольной формы (сердце, звезда, круг) плоской полосой на земле. */
+    private static void shapeBand(BufferBuilder b, Matrix4f m, Ring r, Config c, float[] sx, float[] sy, int n,
+                                  float rad, float inner, float yaw, float a) {
+        float cx = (float) r.x, cy = (float) r.y, cz = (float) r.z;
+        float cs = (float) Math.cos(yaw), sn = (float) Math.sin(yaw);
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            int rgb0 = r.rgb >= 0 ? r.rgb : hsb(c.circRainbow, c.circHue, i / (float) n);
+            int rgb1 = r.rgb >= 0 ? r.rgb : hsb(c.circRainbow, c.circHue, j / (float) n);
+            float ox0 = cx + sx[i] * rad * cs - sy[i] * rad * sn, oz0 = cz + sx[i] * rad * sn + sy[i] * rad * cs;
+            float ox1 = cx + sx[j] * rad * cs - sy[j] * rad * sn, oz1 = cz + sx[j] * rad * sn + sy[j] * rad * cs;
+            float ix0 = cx + sx[i] * rad * inner * cs - sy[i] * rad * inner * sn, iz0 = cz + sx[i] * rad * inner * sn + sy[i] * rad * inner * cs;
+            float ix1 = cx + sx[j] * rad * inner * cs - sy[j] * rad * inner * sn, iz1 = cz + sx[j] * rad * inner * sn + sy[j] * rad * inner * cs;
+            int in0 = argb(rgb0, a * 0.1f), out0 = argb(rgb0, a * 0.95f);
+            int in1 = argb(rgb1, a * 0.1f), out1 = argb(rgb1, a * 0.95f);
+            vtx(b, m, ix0, cy, iz0, in0);
+            vtx(b, m, ox0, cy, oz0, out0);
+            vtx(b, m, ox1, cy, oz1, out1);
+            vtx(b, m, ix0, cy, iz0, in0);
+            vtx(b, m, ox1, cy, oz1, out1);
+            vtx(b, m, ix1, cy, iz1, in1);
+        }
+    }
+
+    /** Линии пентаграммы {5/2}. */
+    private static void pentaLines(BufferBuilder b, Matrix4f m, Ring r, Config c, float rad, float yaw, float a) {
+        float y = (float) r.y;
+        for (int k = 0; k < 5; k++) {
+            int k2 = (k + 2) % 5;
+            double a1 = yaw + (-Math.PI / 2 + k * 2 * Math.PI / 5), a2 = yaw + (-Math.PI / 2 + k2 * 2 * Math.PI / 5);
+            float x1 = (float) (r.x + Math.cos(a1) * rad * 0.92f), z1 = (float) (r.z + Math.sin(a1) * rad * 0.92f);
+            float x2 = (float) (r.x + Math.cos(a2) * rad * 0.92f), z2 = (float) (r.z + Math.sin(a2) * rad * 0.92f);
+            float dx = x2 - x1, dz = z2 - z1;
+            float l = (float) Math.sqrt(dx * dx + dz * dz);
+            if (l < 1e-6f) continue;
+            float nx = -dz / l * rad * 0.035f, nz = dx / l * rad * 0.035f;
+            int rgb = r.rgb >= 0 ? r.rgb : hsb(c.circRainbow, c.circHue, k / 5f);
+            int col = argb(rgb, a * 0.95f);
+            vtx(b, m, x1 - nx, y, z1 - nz, col);
+            vtx(b, m, x1 + nx, y, z1 + nz, col);
+            vtx(b, m, x2 + nx, y, z2 + nz, col);
+            vtx(b, m, x1 - nx, y, z1 - nz, col);
+            vtx(b, m, x2 + nx, y, z2 + nz, col);
+            vtx(b, m, x2 - nx, y, z2 - nz, col);
+        }
+    }
+
     private static void drawRings(Matrix4f m, Config c, long now) {
         BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
         for (Ring r : rings) {
@@ -1625,6 +1735,19 @@ public class WorldRender {
             float e = 1f - (1f - t) * (1f - t) * (1f - t);
             float rad = 0.2f + (r.maxR - 0.2f) * e;
             float a = 1f - t;
+            if (!r.splash && r.shape == 1) {
+                shapeBand(b, m, r, c, HX, HY, 24, rad, 0.78f, r.yaw, a);
+                continue;
+            }
+            if (!r.splash && r.shape == 2) {
+                shapeBand(b, m, r, c, STX, STY, 10, rad, 0.6f, r.yaw + t * 3f, a);
+                continue;
+            }
+            if (!r.splash && r.shape == 3) {
+                shapeBand(b, m, r, c, CCX, CCY, 48, rad, 0.93f, 0f, a);
+                pentaLines(b, m, r, c, rad, r.yaw + t * 2f, a);
+                continue;
+            }
             float inner = rad * 0.8f;
             float y = (float) r.y;
             int seg = r.splash ? 20 : 48;
@@ -1649,7 +1772,7 @@ public class WorldRender {
     }
 
     // ---------- лента ----------
-    private static void drawRibbon(Matrix4f m, Config c, double px, double py, double pz, long now) {
+    private static void drawRibbon(Matrix4f m, Config c, double px, double py, double pz, long now, Vec3d cam) {
         List<Pt> pts = new ArrayList<>(trail);
         if (pts.isEmpty()) return;
         float life = c.ribbonLife * 1000f;
@@ -1671,6 +1794,10 @@ public class WorldRender {
                 z = pz;
                 a = 1f;
             }
+            // рядом с камерой лента плавно исчезает (не лезет в обзор от первого лица)
+            double dxc = x - cam.x, dyc = y + h * 0.5 - cam.y, dzc = z - cam.z;
+            float dist = (float) Math.sqrt(dxc * dxc + dyc * dyc + dzc * dzc);
+            a *= Math.max(0f, Math.min(1f, (dist - 0.9f) / 1.3f));
             a = Math.max(0f, Math.min(1f, a));
             int rgb = hsb(c.trailRainbow, c.trailHue, i * 0.03f);
             b.vertex(m, (float) x, (float) y + 0.05f, (float) z).color(argb(rgb, a * 0.9f));

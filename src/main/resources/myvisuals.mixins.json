@@ -9,7 +9,9 @@
     "GameRendererMixin",
     "EntityMixin",
     "CameraMixin",
-    "ItemEntityRendererMixin"
+    "ItemEntityRendererMixin",
+    "KeyboardInputMixin",
+    "InGameOverlayRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 0

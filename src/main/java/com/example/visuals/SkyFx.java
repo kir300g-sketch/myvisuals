@@ -11,6 +11,7 @@ import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
+import java.awt.Color;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
@@ -21,7 +22,7 @@ public final class SkyFx {
     private SkyFx() {
     }
 
-    private static final int[] ids = new int[4];
+    private static final int[] ids = new int[5];
 
     //            зенит        горизонт     туманность 1    туманность 2
     private static final int[][] PAL = {
@@ -31,9 +32,10 @@ public final class SkyFx {
             {0x190F3C, 0xFF6E3C, 0xFF965A, 0xC850B4}
     };
 
-    public static final String[] STYLES = {"Галактика", "Неон", "Изумруд", "Закат"};
+    public static final String[] STYLES = {"Галактика", "Неон", "Изумруд", "Закат", "Брейккор"};
 
     public static int horizon(int style) {
+        if (style == 4) return 0x7A2CFF;
         return PAL[Math.max(0, Math.min(3, style))][1];
     }
 
@@ -81,6 +83,7 @@ public final class SkyFx {
     }
 
     private static int generate(int style) {
+        if (style == 4) return generateBreak();
         int W = 1024, H = 512;
         int[][] pal = new int[4][];
         for (int i = 0; i < 4; i++) pal[i] = rgb(PAL[style][i]);
@@ -130,9 +133,61 @@ public final class SkyFx {
         return id;
     }
 
+    /** Для брейккора цвет каждой вершины переливается по времени: узор в текстуре серый, радуга накладывается сверху. */
+    private static int vcol(int style, float u, float v, long now, int base) {
+        if (style != 4) return base;
+        float h = ((now % 100000L) / 3000f + u * 3f + v * 2f) % 1f;
+        int rgb = Color.HSBtoRGB(h, 0.85f, 1f);
+        int g = base & 255;
+        int r = ((rgb >> 16) & 255) * g / 255, gg = ((rgb >> 8) & 255) * g / 255, bb = (rgb & 255) * g / 255;
+        return 0xFF000000 | (r << 16) | (gg << 8) | bb;
+    }
+
+    /** Психоделический серый узор: полосы, кольца, шахматка, глитч-сдвиги и звёзды. */
+    private static int generateBreak() {
+        int W = 1024, H = 512;
+        ByteBuffer buf = BufferUtils.createByteBuffer(W * H * 4);
+        for (int y = 0; y < H; y++) {
+            float v = y / (float) H;
+            int row = y / 6;
+            float glitch = hash(row, 77) > 0.93f ? (hash(row, 5) - 0.5f) * 0.25f : 0f;
+            for (int x = 0; x < W; x++) {
+                float u = (x / (float) W + glitch) % 1f;
+                if (u < 0) u += 1f;
+                float n = fbm(u, v);
+                float bands = 0.5f + 0.5f * (float) Math.sin(6.2832f * (u * 12f + v * 16f + n * 3f));
+                float rings = 0.5f + 0.5f * (float) Math.sin(6.2832f * (n * 9f + v * 4f));
+                float chk = (((int) (u * 48f) + (int) (v * 24f)) & 1) == 0 ? 1f : 0f;
+                float val = bands * 0.45f + rings * 0.35f + chk * 0.2f;
+                val = smooth(0.25f, 0.75f, val);
+                if (hash(x * 3 + 11, y * 7 + 3) > 0.9985f) val = 1f;
+                int g = Math.max(40, Math.min(255, Math.round(val * 255)));
+                buf.put((byte) g);
+                buf.put((byte) g);
+                buf.put((byte) g);
+                buf.put((byte) 255);
+            }
+        }
+        buf.flip();
+        int prevBound = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        int id = GlStateManager._genTexture();
+        RenderSystem.bindTexture(id);
+        GL11.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_PIXELS, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_ROWS, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, 10497);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, 33071);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, W, H, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        RenderSystem.bindTexture(prevBound);
+        return id;
+    }
+
     public static void draw(Matrix4f m, Vec3d cam, float radius, long now) {
         Config c = Config.I;
-        int style = Math.max(0, Math.min(3, c.skyStyle));
+        int style = Math.max(0, Math.min(4, c.skyStyle));
         if (ids[style] == 0) ids[style] = generate(style);
 
         int prevTex = RenderSystem.getShaderTexture(0);
@@ -152,12 +207,14 @@ public final class SkyFx {
                 float u0 = j / (float) lon + off, u1 = (j + 1) / (float) lon + off;
                 float[] a = pt(cam, radius, p0, t0), bb = pt(cam, radius, p0, t1);
                 float[] cc = pt(cam, radius, p1, t1), d = pt(cam, radius, p1, t0);
-                v(b, m, a, u0, v0, color);
-                v(b, m, bb, u1, v0, color);
-                v(b, m, cc, u1, v1, color);
-                v(b, m, a, u0, v0, color);
-                v(b, m, cc, u1, v1, color);
-                v(b, m, d, u0, v1, color);
+                int ca = vcol(style, u0, v0, now, color), cb = vcol(style, u1, v0, now, color);
+                int cc2 = vcol(style, u1, v1, now, color), cd = vcol(style, u0, v1, now, color);
+                v(b, m, a, u0, v0, ca);
+                v(b, m, bb, u1, v0, cb);
+                v(b, m, cc, u1, v1, cc2);
+                v(b, m, a, u0, v0, ca);
+                v(b, m, cc, u1, v1, cc2);
+                v(b, m, d, u0, v1, cd);
             }
         }
         BuiltBuffer built = b.endNullable();

@@ -1,5 +1,6 @@
 package com.example.visuals.mixin;
 
+import com.example.visuals.Freecam;
 import com.example.visuals.Freelook;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
@@ -13,7 +14,11 @@ public class EntityMixin {
 
     @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true)
     private void myvisuals$look(double cursorDeltaX, double cursorDeltaY, CallbackInfo ci) {
-        if (Freelook.active && (Object) this == MinecraftClient.getInstance().player) {
+        if ((Object) this != MinecraftClient.getInstance().player) return;
+        if (Freecam.active) {
+            Freecam.rotate(cursorDeltaX, cursorDeltaY);
+            ci.cancel();
+        } else if (Freelook.active) {
             Freelook.rotate(cursorDeltaX, cursorDeltaY);
             ci.cancel();
         }
