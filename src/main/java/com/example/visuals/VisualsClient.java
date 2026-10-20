@@ -40,6 +40,7 @@ public class VisualsClient implements ClientModInitializer {
         // небо: три момента отрисовки на выбор (0 до земли, 1 до сущностей, 2 после воды)
         WorldRenderEvents.AFTER_SETUP.register(ctx -> WorldRender.renderSkyStage(ctx, 0));
         WorldRenderEvents.BEFORE_ENTITIES.register(ctx -> WorldRender.renderSkyStage(ctx, 1));
+        WorldRenderEvents.START.register(ctx -> WorldRender.frameTime());
         WorldRenderEvents.AFTER_TRANSLUCENT.register(WorldRender::render);
 
         // эффекты за курсором во всех экранах

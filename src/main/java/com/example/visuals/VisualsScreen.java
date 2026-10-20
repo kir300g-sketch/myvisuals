@@ -125,7 +125,7 @@ public class VisualsScreen extends Screen {
 
         Module kill = mod(combat, "Эффект убийства", () -> c.killEnabled, v -> c.killEnabled = v);
         kill.opts.add(new Widgets.Header(() -> "Убийств: " + c.killCount));
-        kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса"}, () -> c.killFx, i -> c.killFx = i));
+        kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса", "Sun Strike"}, () -> c.killFx, i -> c.killFx = i));
         kill.opts.add(new Widgets.Choice("Цели", new String[]{"Только игроки", "Игроки и мобы", "Всё кроме животных"}, () -> c.killTargets, i -> c.killTargets = i));
         kill.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.killSize, v -> c.killSize = v));
         kill.opts.add(new Widgets.Toggle("Счётчик на месте смерти", () -> c.killCounter, v -> c.killCounter = v));
@@ -241,11 +241,10 @@ public class VisualsScreen extends Screen {
         Module sky = mod(world, "Небо", () -> c.skyEnabled, v -> c.skyEnabled = v);
         sky.opts.add(new Widgets.Choice("Стиль", SkyFx.STYLES, () -> c.skyStyle, i -> c.skyStyle = i));
         sky.opts.add(new Widgets.Choice("Момент рисования", new String[]{"До земли", "До сущностей", "После воды"}, () -> c.skyMode, i -> c.skyMode = i));
+        sky.opts.add(new Widgets.Header("Breakcore мигает, осторожно"));
         sky.opts.add(new Widgets.Slider("Вращение", 0f, 2f, 2, () -> c.skySpin, v -> c.skySpin = v));
         sky.opts.add(new Widgets.Slider("Яркость", 0.3f, 1f, 2, () -> c.skyBright, v -> c.skyBright = v));
 
-        mod(world, "Физика предметов", () -> c.itemPhysics, v -> c.itemPhysics = v);
-        mod(world, "Убрать огонь на экране", () -> c.noFire, v -> c.noFire = v);
         Module time = mod(world, "Время суток", () -> c.timeEnabled, v -> c.timeEnabled = v);
         time.opts.add(new Widgets.Slider("Время (0-24000)", 0, 24000, 0, () -> c.timeOfDay, v -> c.timeOfDay = v));
         time.opts.add(new Widgets.Header("6000 день, 12500 закат, 18000 ночь"));
@@ -269,6 +268,15 @@ public class VisualsScreen extends Screen {
         Module shake = mod(fx, "Анти-тряска", () -> c.antiShake, v -> c.antiShake = v);
         shake.opts.add(new Widgets.Header("Убирает тряску камеры при уроне"));
         shake.opts.add(new Widgets.Toggle("Без покачивания при ходьбе", () -> c.antiBob, v -> c.antiBob = v));
+
+        mod(fx, "Физика предметов", () -> c.itemPhysics, v -> c.itemPhysics = v);
+        mod(fx, "Убрать огонь на экране", () -> c.noFire, v -> c.noFire = v);
+        Module wings = mod(fx, "Крылья", () -> c.wingsEnabled, v -> c.wingsEnabled = v);
+        wings.opts.add(new Widgets.Choice("Стиль", new String[]{"Ангельские", "Демонические", "Неоновые", "Бабочка"}, () -> c.wingStyle, i -> c.wingStyle = i));
+        wings.opts.add(new Widgets.Slider("Размер", 0.6f, 2.5f, 2, () -> c.wingSize, v -> c.wingSize = v));
+        wings.opts.add(new Widgets.Slider("Скорость взмаха", 0.2f, 2.5f, 2, () -> c.wingSpeed, v -> c.wingSpeed = v));
+        wings.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.wingRainbow, v -> c.wingRainbow = v));
+        wings.opts.add(new Widgets.HueSlider("Оттенок", () -> c.wingHue, v -> c.wingHue = v));
 
         // ---- Interface ----
         Category ui = cat("Interface");

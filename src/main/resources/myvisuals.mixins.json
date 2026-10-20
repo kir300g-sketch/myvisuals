@@ -11,7 +11,8 @@
     "CameraMixin",
     "ItemEntityRendererMixin",
     "KeyboardInputMixin",
-    "InGameOverlayRendererMixin"
+    "InGameOverlayRendererMixin",
+    "ClientPlayNetworkHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 0

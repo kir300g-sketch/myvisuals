@@ -181,6 +181,14 @@ public class Config {
     public boolean cursorRainbow = true;
     public float cursorHue = 0.8f;
 
+    // Крылья
+    public boolean wingsEnabled = false;
+    public int wingStyle = 0;
+    public float wingSize = 1.2f;
+    public boolean wingRainbow = false;
+    public float wingHue = 0.55f;
+    public float wingSpeed = 0.8f;
+
     // Комбо
     public boolean comboEnabled = false;
     public float comboSize = 1.2f;
