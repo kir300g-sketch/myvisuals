@@ -75,6 +75,7 @@ public final class Hud {
         Config cfg = Config.I;
         boolean editing = mc.currentScreen instanceof VisualsScreen;
         int sw = c.getScaledWindowWidth(), sh = c.getScaledWindowHeight();
+        Streak.render(c, mc, sw, sh);
         if (cfg.hudTarget.enabled) drawTarget(c, mc, cfg, sw, sh, editing);
         if (cfg.hudArmor.enabled) drawArmor(c, mc, sw, sh);
         if (cfg.hudPotions.enabled) drawPotions(c, mc, sw, sh, editing);

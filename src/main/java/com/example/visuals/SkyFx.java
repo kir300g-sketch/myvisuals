@@ -166,6 +166,8 @@ public final class SkyFx {
         float spin = ts * 0.004f * c.skySpin * 6.2832f;
         float hueBase = (now % 100000L) / 3000f;
 
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthFunc(515);
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
         BufferBuilder b = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
 

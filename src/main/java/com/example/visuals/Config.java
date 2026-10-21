@@ -189,6 +189,13 @@ public class Config {
     public float wingHue = 0.55f;
     public float wingSpeed = 0.8f;
 
+    // Серия убийств
+    public boolean streakEnabled = false;
+    public float streakTime = 60f;
+    public float streakShow = 3.2f;
+
+    public boolean testArmor = true;
+
     // Комбо
     public boolean comboEnabled = false;
     public float comboSize = 1.2f;

@@ -125,7 +125,7 @@ public class VisualsScreen extends Screen {
 
         Module kill = mod(combat, "Эффект убийства", () -> c.killEnabled, v -> c.killEnabled = v);
         kill.opts.add(new Widgets.Header(() -> "Убийств: " + c.killCount));
-        kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса", "Sun Strike"}, () -> c.killFx, i -> c.killFx = i));
+        kill.opts.add(new Widgets.Choice("Эффект", new String[]{"Нет", "Коса", "Sun Strike", "Молот", "Пентаграмма", "Ядерный взрыв"}, () -> c.killFx, i -> c.killFx = i));
         kill.opts.add(new Widgets.Choice("Цели", new String[]{"Только игроки", "Игроки и мобы", "Всё кроме животных"}, () -> c.killTargets, i -> c.killTargets = i));
         kill.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.killSize, v -> c.killSize = v));
         kill.opts.add(new Widgets.Toggle("Счётчик на месте смерти", () -> c.killCounter, v -> c.killCounter = v));
@@ -135,6 +135,12 @@ public class VisualsScreen extends Screen {
             c.killCount = 0;
             Config.save();
         }));
+
+        Module streak = mod(combat, "Серия убийств", () -> c.streakEnabled, v -> c.streakEnabled = v);
+        streak.opts.add(new Widgets.Header("Первая кровь, двойное, тройное, ультра, буйство"));
+        streak.opts.add(new Widgets.Slider("Серия держится (сек)", 10f, 300f, 0, () -> c.streakTime, v -> c.streakTime = v));
+        streak.opts.add(new Widgets.Slider("Показ надписи (сек)", 1.5f, 6f, 1, () -> c.streakShow, v -> c.streakShow = v));
+        streak.opts.add(new Widgets.Action("Сбросить серию", Streak::reset));
 
         Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
@@ -149,14 +155,17 @@ public class VisualsScreen extends Screen {
 
         Module tp = mod(combat, "Тест-игрок", () -> TestPlayer.active(), v -> {
             if (v) TestPlayer.spawn(MinecraftClient.getInstance());
-            else TestPlayer.remove(MinecraftClient.getInstance());
+            else TestPlayer.removeAll(MinecraftClient.getInstance());
         });
         tp.opts.add(new Widgets.Header("Виден только тебе"));
         tp.opts.add(new Widgets.Choice("Режим", new String[]{"Бессмертный", "Смертный"}, () -> c.testMortal ? 1 : 0, i -> c.testMortal = i == 1));
         tp.opts.add(new Widgets.Toggle("Копировать экипировку", () -> c.testCopyGear, v -> c.testCopyGear = v));
         tp.opts.add(new Widgets.Toggle("Возрождать после смерти", () -> c.testRespawn, v -> c.testRespawn = v));
         tp.opts.add(new Widgets.Slider("Дистанция", 1.5f, 8f, 1, () -> c.testDist, v -> c.testDist = v));
-        tp.opts.add(new Widgets.Action("Призвать перед собой", () -> TestPlayer.spawn(MinecraftClient.getInstance())));
+        tp.opts.add(new Widgets.Toggle("Защита от брони", () -> c.testArmor, v -> c.testArmor = v));
+        tp.opts.add(new Widgets.Action("Призвать одного", () -> TestPlayer.spawn(MinecraftClient.getInstance())));
+        tp.opts.add(new Widgets.Action("Добавить ещё бота", () -> TestPlayer.addBot(MinecraftClient.getInstance())));
+        tp.opts.add(new Widgets.Action("Убрать всех", () -> TestPlayer.removeAll(MinecraftClient.getInstance())));
 
         Module traj = mod(combat, "Траектория", () -> c.trajEnabled, v -> c.trajEnabled = v);
         traj.opts.add(new Widgets.Toggle("Лук, арбалет, трезубец", () -> c.trajBow, v -> c.trajBow = v));
