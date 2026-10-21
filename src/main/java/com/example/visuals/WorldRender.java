@@ -569,8 +569,9 @@ public class WorldRender {
             long age = now - s.t0;
             float t = age / 1000f;
             if (t < SWING_END) spawnWisps(s, c, t);
-            if (!s.impacted && age >= 1000) {
+            if (!s.impacted && age >= 900) {
                 s.impacted = true;
+                SoundFx.play(SoundFx.SCYTHE);
                 killBurst(s.x, s.hy, s.z, c);
                 rings.add(new Ring(s.x, s.y + 0.03, s.z, now, 2.2f * c.killSize, 850, killRgb(c, 0f), true));
                 if (c.killCounter) spawnKillLabel(s.x, s.hy + 0.25, s.z, now);
@@ -648,22 +649,22 @@ public class WorldRender {
             } else if (k.type == 4) {
                 if (!k.impacted && age >= 1350) {
                     k.impacted = true;
-                    flameBurst(k.x, k.y, k.z, 1.5 * c.killSize, 70, 0.45f, 0xFFB020, 0xFF4018);
-                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 3.4f * c.killSize, 800, 0xFF4018, true));
-                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 2.0f * c.killSize, 600, 0xFFE070, true));
+                    flameBurst(k.x, k.y, k.z, 0.9 * c.killSize, 70, 0.45f, 0xFFB020, 0xFF4018);
+                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 2.1f * c.killSize, 800, 0xFF4018, true));
+                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 1.25f * c.killSize, 600, 0xFFE070, true));
                     if (c.killCounter) spawnKillLabel(k.x, k.y + 2.2, k.z, now);
                 }
-                if (t >= 1.35f && t < 2.4f) flameBurst(k.x, k.y, k.z, 1.4 * c.killSize, 6, 0.3f, 0xFFB020, 0xFF4018);
+                if (t >= 1.35f && t < 2.4f) flameBurst(k.x, k.y, k.z, 0.85 * c.killSize, 6, 0.3f, 0xFFB020, 0xFF4018);
                 if (age > 3000) it.remove();
             } else {
                 if (!k.impacted) {
                     k.impacted = true;
                     flameBurst(k.x, k.y, k.z, 0.6, 60, 0.5f, 0xFFA020, 0xFFE070);
-                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 6.0f * c.killSize, 1000, 0xFFF0C0, true));
-                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 3.5f * c.killSize, 800, 0xFF7A18, true));
-                    if (c.killCounter) spawnKillLabel(k.x, k.y + 3.0 * c.killSize, k.z, now);
+                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 3.4f * c.killSize, 1000, 0xFFF0C0, true));
+                    rings.add(new Ring(k.x, k.y + 0.03, k.z, now, 2.0f * c.killSize, 800, 0xFF7A18, true));
+                    if (c.killCounter) spawnKillLabel(k.x, k.y + 2.0 * c.killSize, k.z, now);
                 }
-                if (t < 1.6f) flameBurst(k.x, k.y + RNG.nextFloat() * 6.0 * c.killSize, k.z, 0.5, 4, 0.12f, 0x606060, 0xFF7A18);
+                if (t < 1.6f) flameBurst(k.x, k.y + RNG.nextFloat() * 4.0 * c.killSize, k.z, 0.5, 4, 0.12f, 0x606060, 0xFF7A18);
                 if (age > 3600) it.remove();
             }
         }
@@ -676,6 +677,7 @@ public class WorldRender {
             long age = now - s.t0;
             if (!s.impacted && age >= 1150) {
                 s.impacted = true;
+                SoundFx.play(SoundFx.SUNSTRIKE);
                 for (int i = 0; i < 40 && sparks.size() < 700; i++) {
                     Spark sp = new Spark();
                     double th = RNG.nextDouble() * Math.PI * 2;
@@ -972,6 +974,7 @@ public class WorldRender {
         if (!sparks.isEmpty() || !decals.isEmpty() || !scythes.isEmpty() || !strikes.isEmpty() || !kfx.isEmpty()) {
             drawFx(m, c, td, now, right, up, rh, cp);
         }
+        if (!kfx.isEmpty()) drawSolids(m, c, now);
         if (!labels.isEmpty()) drawLabels(m, c, now, right, up);
 
         RenderSystem.depthMask(true);
@@ -1999,67 +2002,164 @@ public class WorldRender {
     }
 
     private static void drawKillFx(BufferBuilder b, Matrix4f m, Config c, KillFx k, long now) {
-        if (k.type == 3) drawHammer(b, m, c, k, now);
+        if (k.type == 3) drawHammerPuddle(b, m, c, k, now);
         else if (k.type == 4) drawHell(b, m, c, k, now);
         else drawNuke(b, m, c, k, now);
+    }
+
+    private static void coneW(BufferBuilder b, Matrix4f m, float x0, float y0, float z0, float x1, float y1, float z1,
+                              float r, int rgb, float a) {
+        float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+        float l = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (l < 1e-6f) return;
+        dx /= l;
+        dy /= l;
+        dz /= l;
+        float ux, uy, uz;
+        if (Math.abs(dy) < 0.99f) {
+            ux = dz;
+            uy = 0;
+            uz = -dx;
+        } else {
+            ux = 1;
+            uy = 0;
+            uz = 0;
+        }
+        float ul = (float) Math.sqrt(ux * ux + uy * uy + uz * uz);
+        ux /= ul;
+        uy /= ul;
+        uz /= ul;
+        float vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+        float[] tip = {x1, y1, z1};
+        int seg = 8;
+        for (int k = 0; k < seg; k++) {
+            double t0 = k * Math.PI * 2 / seg, t1 = (k + 1) * Math.PI * 2 / seg;
+            float c0 = (float) Math.cos(t0) * r, s0 = (float) Math.sin(t0) * r, c1 = (float) Math.cos(t1) * r, s1 = (float) Math.sin(t1) * r;
+            float[] a0 = {x0 + ux * c0 + vx * s0, y0 + uy * c0 + vy * s0, z0 + uz * c0 + vz * s0};
+            float[] a1 = {x0 + ux * c1 + vx * s1, y0 + uy * c1 + vy * s1, z0 + uz * c1 + vz * s1};
+            tri3(b, m, a0, a1, tip, rgb, a);
+        }
+    }
+
+    private static float[] hp(float cx, float cy, float cz, float ex, float ez, float nx, float nz, float lx, float ly, float lz) {
+        return new float[]{cx + ex * lx + nx * lz, cy + ly, cz + ez * lx + nz * lz};
+    }
+
+    /** Лужа крови под молотом после удара. */
+    private static void drawHammerPuddle(BufferBuilder b, Matrix4f m, Config c, KillFx k, long now) {
+        float t = (now - k.t0) / 1000f;
+        if (t < 0.9f || t > 2.2f) return;
+        float S = 0.7f * c.killSize;
+        float cx = (float) k.x, cz = (float) k.z;
+        float rr = Math.min(1.4f, (t - 0.9f) * 5f) * S * 1.7f;
+        float fa = Math.max(0f, 1f - Math.max(0f, t - 1.6f) / 0.6f) * 0.75f;
+        for (int i = 0; i < 20; i++) {
+            double a1 = i * Math.PI * 2 / 20, a2 = (i + 1) * Math.PI * 2 / 20;
+            vtx(b, m, cx, (float) k.y + 0.03f, cz, argb(0x6A0A0A, fa));
+            vtx(b, m, cx + (float) Math.cos(a1) * rr, (float) k.y + 0.03f, cz + (float) Math.sin(a1) * rr, argb(0x8A1010, fa * 0.6f));
+            vtx(b, m, cx + (float) Math.cos(a2) * rr, (float) k.y + 0.03f, cz + (float) Math.sin(a2) * rr, argb(0x8A1010, fa * 0.6f));
+        }
+    }
+
+    /** Молот рисуется плотным (с записью глубины), без прозрачности. */
+    private static void drawSolids(Matrix4f m, Config c, long now) {
+        boolean any = false;
+        for (KillFx k : kfx) if (k.type == 3) any = true;
+        if (!any) return;
+        RenderSystem.depthMask(true);
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
+        for (KillFx k : kfx) if (k.type == 3) drawHammer(b, m, c, k, now);
+        end(b);
+        RenderSystem.depthMask(false);
     }
 
     private static void drawHammer(BufferBuilder b, Matrix4f m, Config c, KillFx k, long now) {
         float t = (now - k.t0) / 1000f;
         if (t < 0f || t > 2.2f) return;
-        float S = 0.6f * c.killSize;
+        float S = 0.7f * c.killSize;
         float H;
         if (t < 0.5f) {
-            H = 7f;
+            H = 12f - 5f * (t / 0.5f);
         } else if (t < 0.9f) {
             float u = (t - 0.5f) / 0.4f;
             H = 7f * (1f - u * u);
-        } else {
+        } else if (t < 1.7f) {
             float kk = t - 0.9f;
             H = 0.18f * (float) (Math.exp(-9 * kk) * Math.abs(Math.sin(kk * 18)));
+        } else {
+            float u = (t - 1.7f) / 0.4f;
+            H = 9f * u * u;
         }
-        float alpha = t < 0.25f ? t / 0.25f : (t < 1.6f ? 1f : Math.max(0f, 1f - (t - 1.6f) / 0.6f));
         float ct = (float) Math.cos(TILT), st = (float) Math.sin(TILT);
         float ex = k.rx * ct - k.rz * st, ez = k.rx * st + k.rz * ct;
         float nx = -ez, nz = ex;
         float cx = (float) k.x, cz = (float) k.z;
-        float hy = (float) k.y + 0.62f * S + H;
-        float[] ux = {ex * 0.55f * S, 0f, ez * 0.55f * S};
-        float[] uy = {0f, 0.62f * S, 0f};
-        float[] uz = {nx * 0.6f * S, 0f, nz * 0.6f * S};
-        float[] gx = {ex * 0.06f * S, 0f, ez * 0.06f * S};
-        float[] uyb = {0f, 0.66f * S, 0f};
-        float[] uzb = {nx * 0.64f * S, 0f, nz * 0.64f * S};
-        int steel = 0x6C7078, gold = 0xC9A24A;
-
-        // кровавое пятно под молотом после удара
-        if (t >= 0.9f) {
-            float rr = Math.min(1.4f, (t - 0.9f) * 5f) * S * 1.6f;
-            float fa = Math.max(0f, 1f - Math.max(0f, t - 1.5f) / 0.7f) * 0.7f;
-            for (int i = 0; i < 20; i++) {
-                double a1 = i * Math.PI * 2 / 20, a2 = (i + 1) * Math.PI * 2 / 20;
-                vtx(b, m, cx, (float) k.y + 0.03f, cz, argb(0x6A0A0A, fa));
-                vtx(b, m, cx + (float) Math.cos(a1) * rr, (float) k.y + 0.03f, cz + (float) Math.sin(a1) * rr, argb(0x8A1010, fa * 0.6f));
-                vtx(b, m, cx + (float) Math.cos(a2) * rr, (float) k.y + 0.03f, cz + (float) Math.sin(a2) * rr, argb(0x8A1010, fa * 0.6f));
-            }
-        }
+        float hy = (float) k.y + 0.66f * S + H;
+        int steel = 0x777C86, steelDark = 0x3C4048, gold = 0xD4AE50, wood = 0x4A3426, woodLt = 0x6A4A34;
+        float a = 1f;
+        float[] ux = {ex * 0.62f * S, 0f, ez * 0.62f * S}, uy = {0f, 0.66f * S, 0f}, uz = {nx * 0.66f * S, 0f, nz * 0.66f * S};
+        float[] plx = {ex * 0.66f * S, 0f, ez * 0.66f * S}, ply = {0f, 0.05f * S, 0f}, plz = {nx * 0.7f * S, 0f, nz * 0.7f * S};
+        float[] capx = {ex * 0.07f * S, 0f, ez * 0.07f * S}, capy = {0f, 0.7f * S, 0f}, capz = {nx * 0.7f * S, 0f, nz * 0.7f * S};
 
         for (int side = -1; side <= 1; side += 2) {
-            boxW(b, m, cx + ex * side * 0.95f * S, hy, cz + ez * side * 0.95f * S, ux, uy, uz, steel, alpha);
-            boxW(b, m, cx + ex * side * 1.5f * S, hy, cz + ez * side * 1.5f * S, gx, uyb, uzb, gold, alpha);
-            ellW(b, m, cx + nx * side * 0.68f * S, hy, cz + nz * side * 0.68f * S, 0.22f * S, 0.22f * S, 0.22f * S, 0xFF7A20, alpha);
+            float bx = cx + ex * side * 1.0f * S, bz = cz + ez * side * 1.0f * S;
+            boxW(b, m, bx, hy, bz, ux, uy, uz, steel, a);
+            boxW(b, m, bx, hy + 0.7f * S, bz, plx, ply, plz, gold, a);
+            boxW(b, m, bx, hy - 0.7f * S, bz, plx, ply, plz, gold, a);
+            boxW(b, m, cx + ex * side * 1.64f * S, hy, cz + ez * side * 1.64f * S, capx, capy, capz, gold, a);
+            // вставки с зубцами и заклёпки на обеих боковых гранях
+            for (int fs = -1; fs <= 1; fs += 2) {
+                float zf = fs * 0.676f * S;
+                float[] p0 = hp(bx, hy, bz, ex, ez, nx, nz, -0.48f * S, -0.42f * S, zf);
+                float[] p1 = hp(bx, hy, bz, ex, ez, nx, nz, 0.48f * S, -0.42f * S, zf);
+                float[] p2 = hp(bx, hy, bz, ex, ez, nx, nz, 0.48f * S, 0.42f * S, zf);
+                float[] p3 = hp(bx, hy, bz, ex, ez, nx, nz, -0.48f * S, 0.42f * S, zf);
+                quadW(b, m, p0, p1, p2, p3, steelDark, a);
+                for (int q = 0; q < 6; q++) {
+                    float x0 = (-0.48f + q * 0.16f) * S, x1 = x0 + 0.16f * S;
+                    float zt = fs * 0.68f * S;
+                    tri3(b, m, hp(bx, hy, bz, ex, ez, nx, nz, x0, 0.34f * S, zt),
+                            hp(bx, hy, bz, ex, ez, nx, nz, x1, 0.34f * S, zt),
+                            hp(bx, hy, bz, ex, ez, nx, nz, (x0 + x1) / 2, 0.06f * S, zt), gold, a);
+                }
+                for (int rx = -1; rx <= 1; rx += 2) {
+                    for (int ry = -1; ry <= 1; ry += 2) {
+                        float[] rv = hp(bx, hy, bz, ex, ez, nx, nz, rx * 0.55f * S, ry * 0.52f * S, fs * 0.69f * S);
+                        ellW(b, m, rv[0], rv[1], rv[2], 0.045f * S, 0.045f * S, 0.045f * S, gold, a);
+                    }
+                }
+            }
+            coneW(b, m, bx, hy + 0.72f * S, bz, bx, hy + 1.25f * S, bz, 0.2f * S, steel, a);
         }
-        cylW(b, m, cx - nx * 0.65f * S, hy, cz - nz * 0.65f * S, cx + nx * 0.65f * S, hy, cz + nz * 0.65f * S, 0.5f * S, gold, alpha);
-        float topY = hy + 0.62f * S;
-        cylW(b, m, cx, topY, cz, cx, topY + 4.5f * S, cz, 0.1f * S, 0x3A2A22, alpha);
-        cylW(b, m, cx, topY, cz, cx, topY + 0.3f * S, cz, 0.15f * S, gold, alpha);
-        cylW(b, m, cx, topY + 4.3f * S, cz, cx, topY + 4.6f * S, cz, 0.14f * S, gold, alpha);
+
+        // центральная втулка с глазком
+        cylW(b, m, cx - nx * 0.76f * S, hy, cz - nz * 0.76f * S, cx + nx * 0.76f * S, hy, cz + nz * 0.76f * S, 0.55f * S, gold, a);
+        for (int side = -1; side <= 1; side += 2) {
+            cylW(b, m, cx + nx * side * 0.66f * S, hy, cz + nz * side * 0.66f * S,
+                    cx + nx * side * 0.78f * S, hy, cz + nz * side * 0.78f * S, 0.64f * S, steelDark, a);
+            cylW(b, m, cx + nx * side * 0.77f * S, hy, cz + nz * side * 0.77f * S,
+                    cx + nx * side * 0.8f * S, hy, cz + nz * side * 0.8f * S, 0.34f * S, 0x15110D, a);
+            ellC(b, m, cx + nx * side * 0.8f * S, hy, cz + nz * side * 0.8f * S, 0.24f * S, 0.24f * S, 0.24f * S, 0xFF8A20, 0xFFE070, 1f);
+        }
+
+        // рукоять с обмоткой, кольцами и навершием
+        float base = hy + 0.66f * S, len = 4.8f * S;
+        int segs = 10;
+        for (int j = 0; j < segs; j++) {
+            cylW(b, m, cx, base + len * j / segs, cz, cx, base + len * (j + 1) / segs, cz, 0.11f * S, (j % 2 == 0) ? wood : woodLt, a);
+        }
+        for (int q = 0; q < 3; q++) {
+            float yy = base + len * (0.25f + 0.25f * q);
+            cylW(b, m, cx, yy, cz, cx, yy + 0.18f * S, cz, 0.15f * S, gold, a);
+        }
+        coneW(b, m, cx, base + len, cz, cx, base + len + 0.6f * S, cz, 0.14f * S, steel, a);
+        coneW(b, m, cx, hy - 0.66f * S, cz, cx, hy - 1.4f * S, cz, 0.14f * S, steel, a);
     }
 
     private static void drawHell(BufferBuilder b, Matrix4f m, Config c, KillFx k, long now) {
         float t = (now - k.t0) / 1000f;
         if (t < 0f || t > 3.0f) return;
-        float R = 2.2f * c.killSize;
+        float R = 1.3f * c.killSize;
         float x = (float) k.x, y = (float) k.y + 0.04f, z = (float) k.z;
         float fadeAll = t < 2.4f ? 1f : Math.max(0f, 1f - (t - 2.4f) / 0.6f);
         float pulse = 0.8f + 0.2f * (float) Math.sin(t * 12f);
@@ -2113,10 +2213,10 @@ public class WorldRender {
         // извержение огня
         float te = t - 1.35f;
         if (te < 0f) return;
-        float Hh = 16f * (1f - (float) Math.pow(1f - Math.min(1f, te / 0.3f), 3));
+        float Hh = 11f * (1f - (float) Math.pow(1f - Math.min(1f, te / 0.3f), 3));
         float fade = (te < 1.0f ? 1f : Math.max(0f, 1f - (te - 1.0f) / 0.9f)) * fadeAll;
         float flick = 0.85f + 0.15f * (float) Math.sin(t * 38f);
-        float[] radii = {0.9f, 1.5f, 2.1f};
+        float[] radii = {0.55f, 0.9f, 1.25f};
         int[] cols = {0xFFE070, 0xFF8A20, 0xFF3010};
         float[] alphas = {0.7f, 0.45f, 0.22f};
         int segs = 14, sides = 14;
@@ -2146,7 +2246,7 @@ public class WorldRender {
                 float y0 = y + j * dyy, y1 = y0 + dyy;
                 float f0 = j / (float) segs, f1 = (j + 1) / (float) segs;
                 float ang0 = y0 * 1.1f + t * 8f + q * 0.785f, ang1 = y1 * 1.1f + t * 8f + q * 0.785f;
-                float rad0 = 1.2f * c.killSize * (1f - 0.35f * f0), rad1 = 1.2f * c.killSize * (1f - 0.35f * f1);
+                float rad0 = 0.75f * c.killSize * (1f - 0.35f * f0), rad1 = 0.75f * c.killSize * (1f - 0.35f * f1);
                 float w = 0.16f;
                 float x0 = x + (float) Math.cos(ang0) * rad0, z0 = z + (float) Math.sin(ang0) * rad0;
                 float x1 = x + (float) Math.cos(ang1) * rad1, z1 = z + (float) Math.sin(ang1) * rad1;
@@ -2209,42 +2309,56 @@ public class WorldRender {
     private static void drawNuke(BufferBuilder b, Matrix4f m, Config c, KillFx k, long now) {
         float t = (now - k.t0) / 1000f;
         if (t < 0f || t > 3.6f) return;
-        float S = c.killSize;
+        float K = 0.55f * c.killSize;
         float x = (float) k.x, y = (float) k.y + 0.05f, z = (float) k.z;
         float fade = t < 2.8f ? 1f : Math.max(0f, 1f - (t - 2.8f) / 0.8f);
 
-        // вспышка
-        if (t < 0.4f) {
-            float fa = 0.9f * (1f - t / 0.4f);
+        // вспышка у земли
+        if (t < 0.35f) {
+            float fa = 0.9f * (1f - t / 0.35f);
             for (int i = 0; i < 28; i++) {
                 double a1 = i * Math.PI * 2 / 28, a2 = (i + 1) * Math.PI * 2 / 28;
                 vtx(b, m, x, y + 0.05f, z, argb(0xFFFFE0, fa));
-                vtx(b, m, x + (float) Math.cos(a1) * 4f * S, y + 0.05f, z + (float) Math.sin(a1) * 4f * S, argb(0xFFC060, 0f));
-                vtx(b, m, x + (float) Math.cos(a2) * 4f * S, y + 0.05f, z + (float) Math.sin(a2) * 4f * S, argb(0xFFC060, 0f));
+                vtx(b, m, x + (float) Math.cos(a1) * 4f * K, y + 0.05f, z + (float) Math.sin(a1) * 4f * K, argb(0xFFC060, 0f));
+                vtx(b, m, x + (float) Math.cos(a2) * 4f * K, y + 0.05f, z + (float) Math.sin(a2) * 4f * K, argb(0xFFC060, 0f));
             }
         }
-        // огненный шар
+        // раскалённый шар: белое ядро и оранжевая оболочка
         float eo = 1f - (float) Math.pow(1f - Math.min(1f, t / 0.5f), 3);
-        float rf = 2.0f * S * eo;
+        float rf = 2.0f * K * eo;
         float fs = Math.max(0f, Math.min(1f, (t - 0.9f) / 0.9f));
-        float fa = 0.8f * (1f - fs * fs * (3f - 2f * fs)) * fade;
-        if (fa > 0.01f && rf > 0.02f) ellC(b, m, x, y + rf * 0.75f, z, rf, rf * 0.9f, rf, 0xFF7A18, 0xFFE878, fa);
-        // ножка гриба
-        float hs = 7f * S * (1f - (float) Math.pow(1f - Math.min(1f, t / 1.4f), 2));
-        if (hs > 0.05f) tubeC(b, m, x, y, z, hs, 0.7f * S, 0.45f * S, 0xFF6A14, 0x555048, 0.75f * fade, t);
-        // шапка и юбка
+        float fa = (1f - fs * fs * (3f - 2f * fs)) * fade;
+        if (fa > 0.01f && rf > 0.02f) {
+            ellC(b, m, x, y + rf * 0.75f, z, rf, rf * 0.9f, rf, 0xFF6A10, 0xFFC050, 0.55f * fa);
+            ellC(b, m, x, y + rf * 0.75f, z, rf * 0.62f, rf * 0.56f, rf * 0.62f, 0xFFE070, 0xFFFFF0, 0.9f * fa);
+        }
+        // ножка гриба: внешний дым и светящаяся сердцевина
+        float hs = 7f * K * (1f - (float) Math.pow(1f - Math.min(1f, t / 1.4f), 2));
+        if (hs > 0.05f) {
+            tubeC(b, m, x, y, z, hs, 0.75f * K, 0.5f * K, 0xFF6A14, 0x4A4640, 0.8f * fade, t);
+            tubeC(b, m, x, y, z, hs, 0.4f * K, 0.28f * K, 0xFFB040, 0xFF6A14, 0.6f * fade, t * 1.3f);
+        }
+        // шапка: купол, юбка, «барашки» и конденсационное кольцо
         if (t > 0.4f) {
             float ec = 1f - (float) Math.pow(1f - Math.min(1f, (t - 0.4f) / 1.3f), 2);
-            float cr = 2.4f * S * ec;
-            float cy = y + hs + 0.1f * S;
+            float cr = 2.4f * K * ec;
+            float cy = y + hs + 0.1f * K;
             if (cr > 0.02f) {
-                ellC(b, m, x, cy, z, cr, cr * 0.6f, cr, 0xFF7A28, 0x5A544C, 0.85f * fade);
-                ellC(b, m, x, cy - cr * 0.25f, z, cr * 1.25f, cr * 0.2f, cr * 1.25f, 0xFF5A14, 0x6A3A20, 0.55f * fade);
+                ellC(b, m, x, cy, z, cr, cr * 0.6f, cr, 0xFF7A28, 0x5A544C, 0.9f * fade);
+                ellC(b, m, x, cy - cr * 0.25f, z, cr * 1.25f, cr * 0.2f, cr * 1.25f, 0xFF5A14, 0x6A3A20, 0.6f * fade);
+                for (int q = 0; q < 6; q++) {
+                    float ang = q * 1.0472f + t * 0.5f;
+                    float lr = cr * 0.42f;
+                    ellC(b, m, x + (float) Math.cos(ang) * cr * 0.85f, cy + cr * 0.1f * (float) Math.sin(ang * 2f + t * 3f),
+                            z + (float) Math.sin(ang) * cr * 0.85f, lr, lr * 0.7f, lr, 0xFF8A30, 0x706A62, 0.75f * fade);
+                }
+                float ca = 0.45f * fade * Math.max(0f, 1f - Math.max(0f, (t - 1.2f) / 1.2f));
+                if (ca > 0.01f) ellC(b, m, x, cy - cr * 0.05f, z, cr * 1.45f, cr * 0.06f, cr * 1.45f, 0xFFFFFF, 0xE8EEF8, ca);
             }
         }
-        // пыль по земле
+        // пыльная ударная волна по земле
         float er = 1f - (float) Math.pow(1f - Math.min(1f, t / 0.9f), 3);
-        float dr = 6.5f * S * er;
+        float dr = 5.5f * K * er;
         float da = 0.5f * Math.max(0f, 1f - t / 1.6f) * fade;
         if (da > 0.01f && dr > 0.1f) {
             for (int i = 0; i < 40; i++) {

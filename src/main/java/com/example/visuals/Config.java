@@ -196,6 +196,10 @@ public class Config {
 
     public boolean testArmor = true;
 
+    // Звуки убийств
+    public boolean soundsEnabled = true;
+    public float soundVolume = 0.8f;
+
     // Комбо
     public boolean comboEnabled = false;
     public float comboSize = 1.2f;

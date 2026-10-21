@@ -142,6 +142,16 @@ public class VisualsScreen extends Screen {
         streak.opts.add(new Widgets.Slider("Показ надписи (сек)", 1.5f, 6f, 1, () -> c.streakShow, v -> c.streakShow = v));
         streak.opts.add(new Widgets.Action("Сбросить серию", Streak::reset));
 
+        Module snd = mod(combat, "Звуки убийств", () -> c.soundsEnabled, v -> c.soundsEnabled = v);
+        snd.opts.add(new Widgets.Header(() -> SoundFx.status()));
+        snd.opts.add(new Widgets.Header("Перетащи файлы в окно меню"));
+        snd.opts.add(new Widgets.Header("или в config/myvisuals/sounds"));
+        snd.opts.add(new Widgets.Slider("Громкость", 0.05f, 1f, 2, () -> c.soundVolume, v -> c.soundVolume = v));
+        snd.opts.add(new Widgets.Action("Перечитать файлы", SoundFx::scan));
+        snd.opts.add(new Widgets.Action("Тест: Sun Strike", () -> SoundFx.play(0)));
+        snd.opts.add(new Widgets.Action("Тест: коса", () -> SoundFx.play(1)));
+        snd.opts.add(new Widgets.Action("Тест: Буйство", () -> SoundFx.play(6)));
+
         Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
         totem.opts.add(new Widgets.Header("Перетащи в окно: PNG или OGG"));
@@ -753,11 +763,11 @@ public class VisualsScreen extends Screen {
 
     // перетаскивание PNG в окно (названия метода различаются между версиями, поэтому оба)
     public void filesDragged(List<Path> paths) {
-        Totem.loadDropped(paths);
+        if (!SoundFx.handleDropped(paths)) Totem.loadDropped(paths);
     }
 
     public void onFilesDropped(List<Path> paths) {
-        Totem.loadDropped(paths);
+        if (!SoundFx.handleDropped(paths)) Totem.loadDropped(paths);
     }
 
     @Override
