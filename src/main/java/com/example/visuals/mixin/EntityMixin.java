@@ -16,13 +16,13 @@ public class EntityMixin {
     @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true)
     private void myvisuals$look(double cursorDeltaX, double cursorDeltaY, CallbackInfo ci) {
         if ((Object) this != MinecraftClient.getInstance().player) return;
-        if (Freecam.active) {
+              if (Freecam.active) {
             Freecam.rotate(cursorDeltaX, cursorDeltaY);
             ci.cancel();
         } else if (Freelook.active) {
             Freelook.rotate(cursorDeltaX, cursorDeltaY);
             ci.cancel();
-         else if (SmoothLook.enabled() && !SmoothLook.applying) {
+        } else if (SmoothLook.enabled() && !SmoothLook.applying()) {
             SmoothLook.add(cursorDeltaX, cursorDeltaY);
             ci.cancel();
         }
