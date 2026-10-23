@@ -142,15 +142,15 @@ public class VisualsScreen extends Screen {
         streak.opts.add(new Widgets.Slider("Показ надписи (сек)", 1.5f, 6f, 1, () -> c.streakShow, v -> c.streakShow = v));
         streak.opts.add(new Widgets.Action("Сбросить серию", Streak::reset));
 
-        Module snd = mod(combat, "Звуки убийств", () -> c.soundsEnabled, v -> c.soundsEnabled = v);
-        snd.opts.add(new Widgets.Header(() -> SoundFx.status()));
-        snd.opts.add(new Widgets.Header("Перетащи файлы в окно меню"));
-        snd.opts.add(new Widgets.Header("или в config/myvisuals/sounds"));
-        snd.opts.add(new Widgets.Slider("Громкость", 0.05f, 1f, 2, () -> c.soundVolume, v -> c.soundVolume = v));
-        snd.opts.add(new Widgets.Action("Перечитать файлы", SoundFx::scan));
-        snd.opts.add(new Widgets.Action("Тест: Sun Strike", () -> SoundFx.play(0)));
-        snd.opts.add(new Widgets.Action("Тест: коса", () -> SoundFx.play(1)));
-        snd.opts.add(new Widgets.Action("Тест: Буйство", () -> SoundFx.play(6)));
+        Module trg = mod(combat, "Таргет-эффект", () -> c.trEnabled, v -> c.trEnabled = v);
+        trg.opts.add(new Widgets.Header("Висит на цели после удара"));
+        trg.opts.add(new Widgets.Choice("Стиль", new String[]{"Рамка", "Полумесяцы", "Ромбики", "Кольцо"}, () -> c.trStyle, i -> c.trStyle = i));
+        trg.opts.add(new Widgets.Slider("Время (сек)", 2f, 30f, 0, () -> c.trTime, v -> c.trTime = v));
+        trg.opts.add(new Widgets.Slider("Размер", 0.5f, 2.5f, 2, () -> c.trSize, v -> c.trSize = v));
+        trg.opts.add(new Widgets.Slider("Скорость", 0.3f, 3f, 2, () -> c.trSpeed, v -> c.trSpeed = v));
+        trg.opts.add(new Widgets.Toggle("Только игроки", () -> c.trPlayersOnly, v -> c.trPlayersOnly = v));
+        trg.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.trRainbow, v -> c.trRainbow = v));
+        trg.opts.add(new Widgets.HueSlider("Цвет", () -> c.trHue, v -> c.trHue = v));
 
         Module totem = mod(combat, "Свой тотем", () -> c.totemEnabled, v -> Totem.setEnabled(v));
         totem.opts.add(new Widgets.Header(() -> Totem.status));
@@ -296,6 +296,22 @@ public class VisualsScreen extends Screen {
         wings.opts.add(new Widgets.Slider("Скорость взмаха", 0.2f, 2.5f, 2, () -> c.wingSpeed, v -> c.wingSpeed = v));
         wings.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.wingRainbow, v -> c.wingRainbow = v));
         wings.opts.add(new Widgets.HueSlider("Оттенок", () -> c.wingHue, v -> c.wingHue = v));
+
+        Module wave = mod(fx, "Вейв от прыжка", () -> c.waveEnabled, v -> c.waveEnabled = v);
+        wave.opts.add(new Widgets.Choice("Когда", new String[]{"Прыжок", "Приземление", "Оба"}, () -> c.waveMode, i -> c.waveMode = i));
+        wave.opts.add(new Widgets.Slider("Скорость", 2f, 20f, 1, () -> c.waveSpeed, v -> c.waveSpeed = v));
+        wave.opts.add(new Widgets.Slider("Радиус", 3f, 20f, 0, () -> c.waveRadius, v -> c.waveRadius = v));
+        wave.opts.add(new Widgets.Slider("Ширина волны", 0.8f, 6f, 1, () -> c.waveWidth, v -> c.waveWidth = v));
+        wave.opts.add(new Widgets.Slider("Размер клетки", 0.5f, 2f, 1, () -> c.waveCell, v -> c.waveCell = v));
+        wave.opts.add(new Widgets.Slider("Заливка", 0f, 0.8f, 2, () -> c.waveFill, v -> c.waveFill = v));
+        wave.opts.add(new Widgets.Slider("Эхо (волн)", 1f, 4f, 0, () -> (float) c.waveEchoes, v -> c.waveEchoes = Math.round(v)));
+        wave.opts.add(new Widgets.Toggle("Радужный цвет", () -> c.waveRainbow, v -> c.waveRainbow = v));
+        wave.opts.add(new Widgets.HueSlider("Цвет", () -> c.waveHue, v -> c.waveHue = v));
+
+        Module smooth = mod(fx, "Плавная камера", () -> c.smoothEnabled, v -> c.smoothEnabled = v);
+        smooth.opts.add(new Widgets.Slider("Плавность", 1f, 30f, 0, () -> c.smoothAmount, v -> c.smoothAmount = v));
+        Module blur = mod(fx, "Размытие при повороте", () -> c.blurEnabled, v -> c.blurEnabled = v);
+        blur.opts.add(new Widgets.Slider("Сила", 0.1f, 0.85f, 2, () -> c.blurStrength, v -> c.blurStrength = v));
 
         // ---- Interface ----
         Category ui = cat("Interface");
@@ -763,11 +779,11 @@ public class VisualsScreen extends Screen {
 
     // перетаскивание PNG в окно (названия метода различаются между версиями, поэтому оба)
     public void filesDragged(List<Path> paths) {
-        if (!SoundFx.handleDropped(paths)) Totem.loadDropped(paths);
+        Totem.loadDropped(paths);
     }
 
     public void onFilesDropped(List<Path> paths) {
-        if (!SoundFx.handleDropped(paths)) Totem.loadDropped(paths);
+        Totem.loadDropped(paths);
     }
 
     @Override

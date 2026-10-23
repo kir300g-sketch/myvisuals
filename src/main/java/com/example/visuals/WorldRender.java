@@ -137,6 +137,14 @@ public class WorldRender {
         boolean impacted;
     }
 
+    private static class Wave {
+        long t0;
+        double cx, cz, gx0, gz0;
+        float cs, amp, speed, maxR, width, fill;
+        int half, n;
+        float[] gy;
+    }
+
     private static class Watch {
         LivingEntity e;
         long t;
@@ -154,6 +162,9 @@ public class WorldRender {
     private static final List<Scythe> scythes = new ArrayList<>();
     private static final List<Strike> strikes = new ArrayList<>();
     private static final List<KillFx> kfx = new ArrayList<>();
+    private static final List<Wave> waves = new ArrayList<>();
+    private static LivingEntity trTarget = null;
+    private static long trTime = 0, trFirst = 0;
     private static final List<Watch> watches = new ArrayList<>();
     private static final Random RNG = new Random();
     private static boolean wasGround = true;
@@ -190,6 +201,11 @@ public class WorldRender {
 
         if (e instanceof TestPlayer.Dummy bot) TestPlayer.onHit(bot, crit);
         if ((c.killEnabled || c.streakEnabled) && validKillTarget(le, c)) addWatch(le, now);
+        if (c.trEnabled && (!c.trPlayersOnly || e instanceof PlayerEntity)) {
+            if (trTarget != le || now - trTime > c.trTime * 1000) trFirst = now;
+            trTarget = le;
+            trTime = now;
+        }
 
         if (c.comboEnabled && (!c.comboPlayersOnly || e instanceof PlayerEntity) && (crit || !c.comboCritOnly)) {
             if (now - lastHit > c.comboReset * 1000) combo = 0;
@@ -224,6 +240,50 @@ public class WorldRender {
         w.z = le.getZ();
         w.h = le.getHeight();
         watches.add(w);
+    }
+
+    private static float groundTop(ClientWorld w, double x, double z, int startY) {
+        for (int dy = 0; dy < 9; dy++) {
+            BlockPos bp = BlockPos.ofFloored(x, startY - dy, z);
+            BlockState st = w.getBlockState(bp);
+            var shape = st.getCollisionShape(w, bp);
+            if (!shape.isEmpty()) return (float) (bp.getY() + shape.getMax(Direction.Axis.Y));
+        }
+        return Float.NaN;
+    }
+
+    /** Эхо от прыжка: клетки сетки на земле вокруг игрока загораются кольцом, которое расходится наружу. */
+    private static void spawnWave(MinecraftClient mc, ClientPlayerEntity p, Config c, long now) {
+        if (mc.world == null) return;
+        float cs = Math.max(0.4f, c.waveCell);
+        int half = Math.min(24, (int) Math.ceil(c.waveRadius / cs) + 1);
+        int n = 2 * half + 1;
+        double gx0 = Math.floor(p.getX() / cs) * cs, gz0 = Math.floor(p.getZ() / cs) * cs;
+        float[] gy = new float[n * n];
+        int startY = (int) Math.floor(p.getY() + 0.5);
+        for (int i = -half; i <= half; i++) {
+            for (int j = -half; j <= half; j++) {
+                gy[(i + half) * n + (j + half)] = groundTop(mc.world, gx0 + (i + 0.5) * cs, gz0 + (j + 0.5) * cs, startY);
+            }
+        }
+        for (int e = 0; e < Math.max(1, c.waveEchoes) && waves.size() < 12; e++) {
+            Wave w = new Wave();
+            w.t0 = now + e * 300L;
+            w.cx = p.getX();
+            w.cz = p.getZ();
+            w.gx0 = gx0;
+            w.gz0 = gz0;
+            w.cs = cs;
+            w.half = half;
+            w.n = n;
+            w.gy = gy;
+            w.amp = (float) Math.pow(0.7, e);
+            w.speed = Math.max(1f, c.waveSpeed);
+            w.maxR = c.waveRadius;
+            w.width = Math.max(0.3f, c.waveWidth);
+            w.fill = c.waveFill;
+            waves.add(w);
+        }
     }
 
     private static void spawnLabel(LivingEntity le, ClientPlayerEntity p, long now, Config c) {
@@ -430,6 +490,8 @@ public class WorldRender {
             scythes.clear();
             strikes.clear();
             kfx.clear();
+            waves.clear();
+            trTarget = null;
             watches.clear();
             combo = 0;
             return;
@@ -456,9 +518,12 @@ public class WorldRender {
         // круги: прыжок / приземление
         boolean ground = p.isOnGround();
         if (!ground) airTicks++;
+        boolean takeoff = wasGround && !ground && p.getVelocity().y > 0.1;
+        boolean landing = !wasGround && ground && airTicks >= 4;
+        if (c.waveEnabled && ((takeoff && (c.waveMode == 0 || c.waveMode == 2)) || (landing && (c.waveMode == 1 || c.waveMode == 2)))) {
+            spawnWave(mc, p, c, now);
+        }
         if (c.jumpEnabled) {
-            boolean takeoff = wasGround && !ground && p.getVelocity().y > 0.1;
-            boolean landing = !wasGround && ground && airTicks >= 4;
             if ((takeoff && (c.jumpMode == 0 || c.jumpMode == 2)) || (landing && (c.jumpMode == 1 || c.jumpMode == 2))) {
                 rings.add(new Ring(p.getX(), p.getY() + 0.03, p.getZ(), now, c.jumpSize, 900, -1, false, c.jumpShape, (float) Math.toRadians(p.getYaw())));
             }
@@ -466,6 +531,7 @@ public class WorldRender {
         if (ground) airTicks = 0;
         wasGround = ground;
         rings.removeIf(r -> now - r.t0 > r.dur);
+        waves.removeIf(w -> now - w.t0 > ((w.maxR + w.width * 2.5f) / w.speed) * 1000L + 500L);
         if (c.timeEnabled) mc.world.setTimeOfDay((long) c.timeOfDay);
 
         // комбо: сброс по таймеру и по урону
@@ -571,7 +637,6 @@ public class WorldRender {
             if (t < SWING_END) spawnWisps(s, c, t);
             if (!s.impacted && age >= 900) {
                 s.impacted = true;
-                SoundFx.play(SoundFx.SCYTHE);
                 killBurst(s.x, s.hy, s.z, c);
                 rings.add(new Ring(s.x, s.y + 0.03, s.z, now, 2.2f * c.killSize, 850, killRgb(c, 0f), true));
                 if (c.killCounter) spawnKillLabel(s.x, s.hy + 0.25, s.z, now);
@@ -677,7 +742,6 @@ public class WorldRender {
             long age = now - s.t0;
             if (!s.impacted && age >= 1150) {
                 s.impacted = true;
-                SoundFx.play(SoundFx.SUNSTRIKE);
                 for (int i = 0; i < 40 && sparks.size() < 700; i++) {
                     Spark sp = new Spark();
                     double th = RNG.nextDouble() * Math.PI * 2;
@@ -929,7 +993,7 @@ public class WorldRender {
         Config c = Config.I;
         boolean anything = c.ribbonEnabled || c.jumpEnabled || c.hatEnabled || c.haloEnabled || c.trajEnabled || c.skyEnabled
                 || !drops.isEmpty() || !rings.isEmpty() || !sparks.isEmpty() || !labels.isEmpty()
-                || !decals.isEmpty() || !scythes.isEmpty() || !strikes.isEmpty() || !kfx.isEmpty() || c.wingsEnabled;
+                || !decals.isEmpty() || !scythes.isEmpty() || !strikes.isEmpty() || !kfx.isEmpty() || c.wingsEnabled || c.trEnabled || !waves.isEmpty();
         if (!anything) return;
 
         Vec3d cp = ctx.camera().getPos();
@@ -965,11 +1029,13 @@ public class WorldRender {
 
         if (c.ribbonEnabled) drawRibbon(m, c, px, py, pz, now, cp);
         if (!rings.isEmpty()) drawRings(m, c, now);
+        if (!waves.isEmpty()) drawWaves(m, c, now);
         if (c.trajEnabled) drawTrajectory(m, c, p, mc, td, px, py, pz, cp, right, up);
         double top = py + p.getHeight();
         if (c.hatEnabled && !first) drawHat(m, c, px, top, pz);
         if (c.haloEnabled && !first) drawHalo(m, c, px, top, pz, now);
         if (c.wingsEnabled && !first) drawWings(m, c, p, px, py, pz, td, now);
+        if (c.trEnabled) drawTargetRender(m, c, td, now, right, up, cp);
         if (!drops.isEmpty()) drawDrops(m, c, td, right, up, rh);
         if (!sparks.isEmpty() || !decals.isEmpty() || !scythes.isEmpty() || !strikes.isEmpty() || !kfx.isEmpty()) {
             drawFx(m, c, td, now, right, up, rh, cp);
@@ -2590,6 +2656,164 @@ public class WorldRender {
         BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
         for (int side = -1; side <= 1; side += 2) {
             wing(b, m, c, ox, oy, oz, rxv * side, rzv * side, bx, bz, flap, c.wingSize, t);
+        }
+        end(b);
+    }
+
+    // ---------- вейв от прыжка ----------
+    private static void flatQuad(BufferBuilder b, Matrix4f m, float x0, float z0, float x1, float z1, float y, int col) {
+        vtx(b, m, x0, y, z0, col);
+        vtx(b, m, x1, y, z0, col);
+        vtx(b, m, x1, y, z1, col);
+        vtx(b, m, x0, y, z0, col);
+        vtx(b, m, x1, y, z1, col);
+        vtx(b, m, x0, y, z1, col);
+    }
+
+    private static void drawWaves(Matrix4f m, Config c, long now) {
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
+        for (Wave w : waves) {
+            float t = (now - w.t0) / 1000f;
+            if (t < 0f) continue;
+            float R = w.speed * t;
+            if (R > w.maxR + w.width * 2.2f) continue;
+            float endFade = R > w.maxR ? Math.max(0f, 1f - (R - w.maxR) / (w.width * 2.2f)) : 1f;
+            float lt = Math.max(0.02f, w.cs * 0.045f);
+            for (int i = 0; i < w.n; i++) {
+                for (int j = 0; j < w.n; j++) {
+                    float gyv = w.gy[i * w.n + j];
+                    if (Float.isNaN(gyv)) continue;
+                    double x0 = w.gx0 + (i - w.half) * w.cs, z0 = w.gz0 + (j - w.half) * w.cs;
+                    float cxm = (float) (x0 + w.cs * 0.5 - w.cx), czm = (float) (z0 + w.cs * 0.5 - w.cz);
+                    float d = (float) Math.sqrt(cxm * cxm + czm * czm);
+                    float q = (d - R) / w.width;
+                    float I = (float) Math.exp(-2 * q * q) * endFade * w.amp;
+                    if (I < 0.05f) continue;
+                    float y = gyv + 0.03f + 0.07f * I;
+                    int rgb = hsb(c.waveRainbow, c.waveHue, d * 0.04f);
+                    float xa = (float) x0, za = (float) z0, xb = (float) (x0 + w.cs), zb = (float) (z0 + w.cs);
+                    flatQuad(b, m, xa, za, xb, zb, y - 0.005f, argb(rgb, w.fill * I));
+                    int ec = argb(mixWhite(rgb, 0.35f), 0.9f * I);
+                    flatQuad(b, m, xa, za - lt / 2, xb, za + lt / 2, y, ec);
+                    flatQuad(b, m, xa, zb - lt / 2, xb, zb + lt / 2, y, ec);
+                    flatQuad(b, m, xa - lt / 2, za, xa + lt / 2, zb, y, ec);
+                    flatQuad(b, m, xb - lt / 2, za, xb + lt / 2, zb, y, ec);
+                }
+            }
+        }
+        end(b);
+    }
+
+    // ---------- таргет-эффект на цели (после удара висит заданное время) ----------
+    private static void drawTargetRender(Matrix4f m, Config c, float td, long now, Vector3f right, Vector3f up, Vec3d cam) {
+        LivingEntity e = trTarget;
+        if (e == null) return;
+        float age = (now - trTime) / 1000f;
+        if (age > c.trTime || e.isRemoved() || e.getHealth() <= 0) {
+            trTarget = null;
+            return;
+        }
+        float fade = Math.min(1f, (now - trFirst) / 250f) * Math.min(1f, (c.trTime - age) / 0.6f);
+        double ex = MathHelper.lerp(td, e.prevX, e.getX()), ey = MathHelper.lerp(td, e.prevY, e.getY()), ez = MathHelper.lerp(td, e.prevZ, e.getZ());
+        float h = e.getHeight(), w = e.getWidth();
+        float t = (now % 1000000L) / 1000f * c.trSpeed;
+        float size = c.trSize;
+        BufferBuilder b = begin(VertexFormat.DrawMode.TRIANGLES);
+        float fx = (float) ex, fz = (float) ez;
+
+        if (c.trStyle == 0) {
+            // рамка: скруглённый квадрат из четырёх угловых дуг, вращается и пульсирует
+            float cy = (float) ey + h * 0.55f;
+            float rad = h * 0.42f * size * (1f + 0.06f * (float) Math.sin(t * 4f));
+            float rot = t * 0.8f;
+            float cr = (float) Math.cos(rot), sr = (float) Math.sin(rot);
+            int N = 64;
+            for (int layer = 0; layer < 2; layer++) {
+                float th = layer == 0 ? 0.16f : 0.05f;
+                for (int i = 0; i < N; i++) {
+                    double a0 = i * Math.PI * 2 / N, a1 = (i + 1) * Math.PI * 2 / N, am = (a0 + a1) / 2;
+                    if (Math.abs(Math.sin(2 * am)) < 0.5) continue;
+                    float[] u = new float[4], v = new float[4];
+                    double[] ang = {a0, a1};
+                    for (int k = 0; k < 2; k++) {
+                        float cx = (float) Math.cos(ang[k]), sy = (float) Math.sin(ang[k]);
+                        float sx = Math.signum(cx) * (float) Math.sqrt(Math.abs(cx)), syy = Math.signum(sy) * (float) Math.sqrt(Math.abs(sy));
+                        float ox = sx * rad, oy = syy * rad, ix = ox * (1f - th), iy = oy * (1f - th);
+                        u[k] = ox * cr - oy * sr;
+                        v[k] = ox * sr + oy * cr;
+                        u[3 - k] = ix * cr - iy * sr;
+                        v[3 - k] = ix * sr + iy * cr;
+                    }
+                    int rgb = hsb(c.trRainbow, c.trHue, i / (float) N * 0.5f);
+                    int col = argb(layer == 0 ? rgb : mixWhite(rgb, 0.6f), (layer == 0 ? 0.3f : 0.95f) * fade);
+                    int[] order = {0, 1, 2, 0, 2, 3};
+                    for (int idx : order) pv(b, m, fx, cy, fz, right, up, u[idx], v[idx], col);
+                }
+            }
+        } else if (c.trStyle == 1) {
+            // два светящихся полумесяца кружат вокруг цели
+            for (int k = 0; k < 2; k++) {
+                float phi = t * 1.5f + k * (float) Math.PI;
+                float R = (w * 0.5f + 0.35f) * size, span = 0.8f, ah = h * 0.32f * size;
+                float cy = (float) ey + h * 0.5f + (float) Math.sin(t * 2f + k * 2f) * h * 0.08f;
+                int segs = 16;
+                for (int s = 0; s < segs; s++) {
+                    float s0 = -1f + 2f * s / segs, s1 = -1f + 2f * (s + 1) / segs, sm = (s0 + s1) / 2f;
+                    float a0 = phi + s0 * span, a1 = phi + s1 * span;
+                    float x0 = fx + (float) Math.cos(a0) * R, z0 = fz + (float) Math.sin(a0) * R, y0 = cy + s0 * ah;
+                    float x1 = fx + (float) Math.cos(a1) * R, z1 = fz + (float) Math.sin(a1) * R, y1 = cy + s1 * ah;
+                    float wd = 0.06f * size * (1f - sm * sm);
+                    int rgb = hsb(c.trRainbow, c.trHue, k * 0.3f + s * 0.02f);
+                    streak(b, m, x1, y1, z1, x0, y0, z0, cam, wd * 2.6f, argb(rgb, 0.25f * fade), argb(rgb, 0.25f * fade));
+                    streak(b, m, x1, y1, z1, x0, y0, z0, cam, wd, argb(mixWhite(rgb, 0.7f), 0.95f * fade), argb(mixWhite(rgb, 0.7f), 0.95f * fade));
+                }
+            }
+        } else if (c.trStyle == 2) {
+            // ромбики порхают вокруг цели на разной высоте
+            int N = 8;
+            for (int i = 0; i < N; i++) {
+                float dir = (i % 2 == 0) ? 1f : -1f;
+                float ang = t * 1.3f * dir + i * (float) (Math.PI * 2 / N);
+                float R = (w * 0.5f + 0.2f + 0.1f * (float) Math.sin(t * 2f + i)) * size;
+                float yy = (float) ey + h * (0.1f + 0.85f * (0.5f + 0.5f * (float) Math.sin(t * 1.6f + i * 1.3f)));
+                float s = 0.09f * size * (0.7f + 0.3f * (float) Math.sin(t * 8f + i));
+                float px = fx + (float) Math.cos(ang) * R, pz = fz + (float) Math.sin(ang) * R;
+                int rgb = hsb(c.trRainbow, c.trHue, i * 0.12f);
+                glow(b, m, px, yy, pz, right, up, s * 3f, rgb, 0.3f * fade);
+                int white = argb(mixWhite(rgb, 0.85f), fade);
+                pv(b, m, px, yy, pz, right, up, 0f, s * 1.4f, white);
+                pv(b, m, px, yy, pz, right, up, s, 0f, white);
+                pv(b, m, px, yy, pz, right, up, -s, 0f, white);
+                pv(b, m, px, yy, pz, right, up, 0f, -s * 1.4f, white);
+                pv(b, m, px, yy, pz, right, up, s, 0f, white);
+                pv(b, m, px, yy, pz, right, up, -s, 0f, white);
+            }
+        } else {
+            // кольцо скользит по телу вверх и вниз со следом
+            float R = (w * 0.5f + 0.25f) * size;
+            for (int g = 0; g < 3; g++) {
+                float y = (float) ey + h * (0.5f + 0.5f * (float) Math.sin(t * 2f - g * 0.35f));
+                float ga = (1f - g * 0.3f) * fade;
+                int seg = 40;
+                for (int i = 0; i < seg; i++) {
+                    double a0 = i * Math.PI * 2 / seg, a1 = (i + 1) * Math.PI * 2 / seg;
+                    float c0 = (float) Math.cos(a0), s0 = (float) Math.sin(a0), c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+                    int rgb = hsb(c.trRainbow, c.trHue, i / (float) seg * 0.5f + g * 0.1f);
+                    int gl = argb(rgb, 0.25f * ga), core = argb(mixWhite(rgb, 0.6f), 0.95f * ga);
+                    vtx(b, m, fx + c0 * R * 0.84f, y, fz + s0 * R * 0.84f, gl);
+                    vtx(b, m, fx + c0 * R * 1.08f, y, fz + s0 * R * 1.08f, gl);
+                    vtx(b, m, fx + c1 * R * 1.08f, y, fz + s1 * R * 1.08f, gl);
+                    vtx(b, m, fx + c0 * R * 0.84f, y, fz + s0 * R * 0.84f, gl);
+                    vtx(b, m, fx + c1 * R * 1.08f, y, fz + s1 * R * 1.08f, gl);
+                    vtx(b, m, fx + c1 * R * 0.84f, y, fz + s1 * R * 0.84f, gl);
+                    vtx(b, m, fx + c0 * R * 0.95f, y + 0.01f, fz + s0 * R * 0.95f, core);
+                    vtx(b, m, fx + c0 * R, y + 0.01f, fz + s0 * R, core);
+                    vtx(b, m, fx + c1 * R, y + 0.01f, fz + s1 * R, core);
+                    vtx(b, m, fx + c0 * R * 0.95f, y + 0.01f, fz + s0 * R * 0.95f, core);
+                    vtx(b, m, fx + c1 * R, y + 0.01f, fz + s1 * R, core);
+                    vtx(b, m, fx + c1 * R * 0.95f, y + 0.01f, fz + s1 * R * 0.95f, core);
+                }
+            }
         }
         end(b);
     }

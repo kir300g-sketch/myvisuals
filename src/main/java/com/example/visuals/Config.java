@@ -196,9 +196,33 @@ public class Config {
 
     public boolean testArmor = true;
 
-    // Звуки убийств
-    public boolean soundsEnabled = true;
-    public float soundVolume = 0.8f;
+    // Таргет-эффект
+    public boolean trEnabled = false;
+    public int trStyle = 0;
+    public float trTime = 10f;
+    public float trSize = 1f;
+    public float trSpeed = 1f;
+    public boolean trPlayersOnly = false;
+    public boolean trRainbow = false;
+    public float trHue = 0.58f;
+
+    // Вейв от прыжка
+    public boolean waveEnabled = false;
+    public int waveMode = 0;
+    public float waveSpeed = 8f;
+    public float waveRadius = 10f;
+    public float waveWidth = 2.2f;
+    public float waveCell = 1f;
+    public float waveFill = 0.3f;
+    public int waveEchoes = 2;
+    public boolean waveRainbow = false;
+    public float waveHue = 0.52f;
+
+    // Плавность и размытие камеры
+    public boolean smoothEnabled = false;
+    public float smoothAmount = 8f;
+    public boolean blurEnabled = false;
+    public float blurStrength = 0.45f;
 
     // Комбо
     public boolean comboEnabled = false;

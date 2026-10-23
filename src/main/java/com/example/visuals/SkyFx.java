@@ -12,12 +12,14 @@ import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
- * Небо без единой текстуры: сфера вокруг камеры, раскрашенная цветами вершин.
- * Звёзды и глитч-блоки Breakcore рисуются маленькими цветными четырёхугольниками.
- * Никакого состояния текстур не трогается, поэтому с подбором предметов и опыта конфликтовать нечему.
+ * Небо без единой текстуры: плотная сфера вокруг камеры, раскрашенная цветами вершин.
+ * Слои: градиент, туманности, Млечный путь с пылевыми полосами, звёзды разных цветов и размеров,
+ * яркие звёзды с лучами и падающие звёзды. Breakcore рисует глитч-блоки.
  */
 public final class SkyFx {
     private SkyFx() {
@@ -25,7 +27,7 @@ public final class SkyFx {
 
     public static final String[] STYLES = {"Галактика", "Неон", "Изумруд", "Закат", "Rainbowcore", "Breakcore"};
 
-    private static final int LON = 96, LAT = 48;
+    private static final int LON = 160, LAT = 80;
     //            зенит        горизонт     туманность 1    туманность 2
     private static final int[][] PAL = {
             {0x080A30, 0x4646AA, 0x965AFF, 0x46AAFF},
@@ -37,7 +39,26 @@ public final class SkyFx {
     private static float[] rbVal = null;
     private static float[][] stars = null;
     private static final int[] BC = {0xFF0000, 0x00FF00, 0x0000FF, 0x00FFFF, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x000000, 0xFF2A2A, 0x7A00FF};
+    private static final int[] TINT = {0xFFFFFF, 0xBFD4FF, 0xFFE2B8};
     private static final int BREAK_N = 1100;
+
+    private static final float[] cLon = new float[LON + 1], sLon = new float[LON + 1];
+    private static final float[] cLat = new float[LAT + 1], sLat = new float[LAT + 1];
+    private static final float[][] rx = new float[2][LON + 1], ry = new float[2][LON + 1], rz = new float[2][LON + 1];
+    private static final int[][] rc = new int[2][LON + 1];
+
+    static {
+        for (int j = 0; j <= LON; j++) {
+            double a = j * Math.PI * 2 / LON;
+            cLon[j] = (float) Math.cos(a);
+            sLon[j] = (float) Math.sin(a);
+        }
+        for (int i = 0; i <= LAT; i++) {
+            double phi = Math.PI / 2 - i * Math.PI / LAT;
+            cLat[i] = (float) Math.cos(phi);
+            sLat[i] = (float) Math.sin(phi);
+        }
+    }
 
     public static int horizon(int style) {
         if (style == 4) return 0x7A2CFF;
@@ -94,14 +115,27 @@ public final class SkyFx {
             base[k] = e >= 0 ? lerp(h, z, (float) Math.pow(e, 0.6)) : lerp(h, 0, Math.min(1f, -e * 1.5f));
         }
         float mask = Math.max(0f, Math.min(1f, 1.2f - Math.abs(e - 0.25f) * 1.3f));
-        float n1 = smooth(0.42f, 0.8f, fbm(u, v, 3)) * mask;
-        float n2 = smooth(0.5f, 0.85f, fbm(u + 0.37f, v + 0.21f, 3)) * mask;
+        float n1 = smooth(0.40f, 0.78f, fbm(u, v, 5)) * mask;
+        float n2 = smooth(0.48f, 0.85f, fbm(u + 0.37f, v + 0.21f, 5)) * mask;
+        float n3 = smooth(0.55f, 0.9f, fbm(u + 0.61f, v + 0.77f, 4)) * mask;
+
+        // Млечный путь: яркая полоса вдоль наклонного большого круга с тёмными пылевыми прожилками
+        float th = u * 6.2832f, phi = (float) Math.PI / 2 - v * (float) Math.PI;
+        float dx = (float) (Math.cos(phi) * Math.cos(th)), dy = (float) Math.sin(phi), dz = (float) (Math.cos(phi) * Math.sin(th));
+        float dist = dx * 0.35f + dy * 0.80f + dz * 0.48f;
+        float band = (float) Math.exp(-dist * dist / 0.035f);
+        float dust = smooth(0.5f, 0.8f, fbm(u + 0.7f, v + 0.3f, 4));
+        band *= 1f - 0.65f * dust * band;
+        float fine = vnoise(u, v, 32, 16);
+        float grain = 0.75f + 0.25f * fine;
+
         int out = 0;
         for (int k = 0; k < 3; k++) {
             int sh = 16 - 8 * k;
             float c1 = (p[2] >> sh) & 255, c2 = (p[3] >> sh) & 255;
-            int val = Math.min(255, Math.round(base[k] + c1 * n1 * 0.8f + c2 * n2 * 0.5f));
-            out |= val << sh;
+            float glowBand = (c2 * 0.6f + 255f * 0.4f) * band * (0.5f + 0.5f * fine);
+            float val = base[k] + c1 * n1 * 0.8f * grain + c2 * n2 * 0.5f + c1 * n3 * 0.35f + glowBand * 0.55f;
+            out |= Math.min(255, Math.round(val)) << sh;
         }
         return out;
     }
@@ -123,7 +157,7 @@ public final class SkyFx {
             for (int i = 0; i <= LAT; i++) {
                 for (int j = 0; j <= LON; j++) {
                     float u = j / (float) LON, v = i / (float) LAT;
-                    float n = fbm(u, v, 3);
+                    float n = fbm(u, v, 4);
                     float bands = 0.5f + 0.5f * (float) Math.sin(6.2832f * (u * 6f + v * 8f + n * 2f));
                     float rings = 0.5f + 0.5f * (float) Math.sin(6.2832f * (n * 5f + v * 3f));
                     r[i * (LON + 1) + j] = smooth(0.2f, 0.8f, bands * 0.55f + rings * 0.45f);
@@ -137,11 +171,21 @@ public final class SkyFx {
     private static float[][] stars() {
         if (stars == null) {
             Random rnd = new Random(12345);
-            stars = new float[700][];
-            for (int i = 0; i < stars.length; i++) {
+            List<float[]> list = new ArrayList<>();
+            int tries = 0;
+            while (list.size() < 1500 && tries++ < 20000) {
                 float sinPhi = Math.max(-0.1f, rnd.nextFloat() * 1.1f - 0.1f);
-                stars[i] = new float[]{rnd.nextFloat() * 6.2832f, (float) Math.asin(sinPhi), 0.6f + rnd.nextFloat() * 1.2f, rnd.nextFloat()};
+                float phi = (float) Math.asin(sinPhi), th = rnd.nextFloat() * 6.2832f;
+                float cph = (float) Math.cos(phi);
+                float dx = cph * (float) Math.cos(th), dz = cph * (float) Math.sin(th);
+                float dist = dx * 0.35f + sinPhi * 0.8f + dz * 0.48f;
+                float accept = 0.2f + 0.8f * (float) Math.exp(-dist * dist / 0.05f);
+                if (rnd.nextFloat() > accept) continue;
+                boolean hero = rnd.nextFloat() < 0.05f;
+                list.add(new float[]{th, phi, hero ? 2.2f + rnd.nextFloat() : 0.5f + rnd.nextFloat() * 1.1f,
+                        rnd.nextFloat(), hero ? 1f : 0f, rnd.nextInt(3)});
             }
+            stars = list.toArray(new float[0][]);
         }
         return stars;
     }
@@ -158,6 +202,15 @@ public final class SkyFx {
         b.vertex(m, x, y, z).color(col);
     }
 
+    private static void sq(BufferBuilder b, Matrix4f m, float[] p0, float[] p1, float[] p2, float[] p3, int c0, int c1) {
+        vt(b, m, p0[0], p0[1], p0[2], c0);
+        vt(b, m, p1[0], p1[1], p1[2], c0);
+        vt(b, m, p2[0], p2[1], p2[2], c1);
+        vt(b, m, p0[0], p0[1], p0[2], c0);
+        vt(b, m, p2[0], p2[1], p2[2], c1);
+        vt(b, m, p3[0], p3[1], p3[2], c1);
+    }
+
     public static void draw(Matrix4f m, Vec3d cam, float R, long now) {
         Config c = Config.I;
         int style = Math.max(0, Math.min(5, c.skyStyle));
@@ -165,6 +218,7 @@ public final class SkyFx {
         float ts = (now % 1000000L) / 1000f;
         float spin = ts * 0.004f * c.skySpin * 6.2832f;
         float hueBase = (now % 100000L) / 3000f;
+        float cs = (float) Math.cos(spin), ss = (float) Math.sin(spin);
 
         RenderSystem.enableDepthTest();
         RenderSystem.depthFunc(515);
@@ -174,18 +228,13 @@ public final class SkyFx {
         int[] g = style < 4 ? gridFor(style) : null;
         float[] rv = style == 4 ? rbValues() : null;
 
-        float[] px = new float[LON + 1], py = new float[LON + 1], pz = new float[LON + 1];
-        int[] pc = new int[LON + 1];
         for (int i = 0; i <= LAT; i++) {
-            double phi = Math.PI / 2 - i * Math.PI / LAT;
-            float cph = (float) Math.cos(phi), sph = (float) Math.sin(phi);
-            float[] cx = new float[LON + 1], cy = new float[LON + 1], cz = new float[LON + 1];
-            int[] cc = new int[LON + 1];
+            int bi = i & 1, pv = bi ^ 1;
             for (int j = 0; j <= LON; j++) {
-                double th = j * Math.PI * 2 / LON + spin;
-                cx[j] = (float) (cam.x + R * cph * Math.cos(th));
-                cy[j] = (float) (cam.y + R * sph);
-                cz[j] = (float) (cam.z + R * cph * Math.sin(th));
+                float cth = cLon[j] * cs - sLon[j] * ss, sth = sLon[j] * cs + cLon[j] * ss;
+                rx[bi][j] = (float) (cam.x + R * cLat[i] * cth);
+                ry[bi][j] = (float) (cam.y + R * sLat[i]);
+                rz[bi][j] = (float) (cam.z + R * cLat[i] * sth);
                 int rgb;
                 float u = j / (float) LON, v = i / (float) LAT;
                 if (style < 4) {
@@ -196,26 +245,22 @@ public final class SkyFx {
                 } else {
                     rgb = Color.HSBtoRGB((hueBase * 0.3f + v * 0.6f) % 1f, 0.9f, 0.16f) & 0xFFFFFF;
                 }
-                cc[j] = shade(rgb, bright, 1f);
+                rc[bi][j] = shade(rgb, bright, 1f);
             }
             if (i > 0) {
                 for (int j = 0; j < LON; j++) {
-                    vt(b, m, px[j], py[j], pz[j], pc[j]);
-                    vt(b, m, px[j + 1], py[j + 1], pz[j + 1], pc[j + 1]);
-                    vt(b, m, cx[j + 1], cy[j + 1], cz[j + 1], cc[j + 1]);
-                    vt(b, m, px[j], py[j], pz[j], pc[j]);
-                    vt(b, m, cx[j + 1], cy[j + 1], cz[j + 1], cc[j + 1]);
-                    vt(b, m, cx[j], cy[j], cz[j], cc[j]);
+                    vt(b, m, rx[pv][j], ry[pv][j], rz[pv][j], rc[pv][j]);
+                    vt(b, m, rx[pv][j + 1], ry[pv][j + 1], rz[pv][j + 1], rc[pv][j + 1]);
+                    vt(b, m, rx[bi][j + 1], ry[bi][j + 1], rz[bi][j + 1], rc[bi][j + 1]);
+                    vt(b, m, rx[pv][j], ry[pv][j], rz[pv][j], rc[pv][j]);
+                    vt(b, m, rx[bi][j + 1], ry[bi][j + 1], rz[bi][j + 1], rc[bi][j + 1]);
+                    vt(b, m, rx[bi][j], ry[bi][j], rz[bi][j], rc[bi][j]);
                 }
             }
-            px = cx;
-            py = cy;
-            pz = cz;
-            pc = cc;
         }
 
         if (style != 5) {
-            // звёзды: маленькие мерцающие четырёхугольники
+            // звёзды: разные цвета, размеры, мерцание; яркие со световыми лучами
             for (float[] st : stars()) {
                 float th = st[0] + spin, ph = st[1];
                 float cph = (float) Math.cos(ph), sph = (float) Math.sin(ph), cth = (float) Math.cos(th), sth = (float) Math.sin(th);
@@ -225,13 +270,48 @@ public final class SkyFx {
                 float t1x = -sth, t1z = cth;
                 float t2x = -sph * cth, t2y = cph, t2z = -sph * sth;
                 float tw = (0.6f + 0.4f * (float) Math.sin(ts * 3f + st[3] * 10f)) * bright;
-                int col = shade(0xFFFFFF, 1f, Math.min(1f, tw));
-                vt(b, m, sx - t1x * s - t2x * s, sy - t2y * s, sz - t1z * s - t2z * s, col);
-                vt(b, m, sx + t1x * s - t2x * s, sy - t2y * s, sz + t1z * s - t2z * s, col);
-                vt(b, m, sx + t1x * s + t2x * s, sy + t2y * s, sz + t1z * s + t2z * s, col);
-                vt(b, m, sx - t1x * s - t2x * s, sy - t2y * s, sz - t1z * s - t2z * s, col);
-                vt(b, m, sx + t1x * s + t2x * s, sy + t2y * s, sz + t1z * s + t2z * s, col);
-                vt(b, m, sx - t1x * s + t2x * s, sy + t2y * s, sz - t1z * s + t2z * s, col);
+                int col = shade(TINT[(int) st[5]], 1f, Math.min(1f, tw));
+                float[] a0 = {sx - t1x * s - t2x * s, sy - t2y * s, sz - t1z * s - t2z * s};
+                float[] a1 = {sx + t1x * s - t2x * s, sy - t2y * s, sz + t1z * s - t2z * s};
+                float[] a2 = {sx + t1x * s + t2x * s, sy + t2y * s, sz + t1z * s + t2z * s};
+                float[] a3 = {sx - t1x * s + t2x * s, sy + t2y * s, sz - t1z * s + t2z * s};
+                sq(b, m, a0, a1, a2, a3, col, col);
+                if (st[4] > 0.5f) {
+                    float L = s * 5f, W = s * 0.18f;
+                    int sc0 = shade(TINT[(int) st[5]], 1f, Math.min(1f, tw) * 0.6f), sc1 = shade(TINT[(int) st[5]], 1f, 0f);
+                    float[] h0 = {sx - t1x * L, sy, sz - t1z * L}, h1 = {sx + t1x * L, sy, sz + t1z * L};
+                    float[] v0 = {sx - t2x * L, sy - t2y * L, sz - t2z * L}, v1 = {sx + t2x * L, sy + t2y * L, sz + t2z * L};
+                    float[] cc = {sx, sy, sz};
+                    sq(b, m, new float[]{sx - t2x * W, sy - t2y * W, sz - t2z * W}, new float[]{sx + t2x * W, sy + t2y * W, sz + t2z * W}, h1, h1, sc0, sc1);
+                    sq(b, m, new float[]{sx - t2x * W, sy - t2y * W, sz - t2z * W}, new float[]{sx + t2x * W, sy + t2y * W, sz + t2z * W}, h0, h0, sc0, sc1);
+                    sq(b, m, new float[]{sx - t1x * W, sy, sz - t1z * W}, new float[]{sx + t1x * W, sy, sz + t1z * W}, v1, v1, sc0, sc1);
+                    sq(b, m, new float[]{sx - t1x * W, sy, sz - t1z * W}, new float[]{sx + t1x * W, sy, sz + t1z * W}, v0, v0, sc0, sc1);
+                }
+            }
+
+            // падающая звезда раз в несколько секунд
+            int epoch = (int) Math.floor(ts / 7f);
+            float local = ts - epoch * 7f;
+            if (local < 0.8f) {
+                float th0 = hash(epoch, 11) * 6.2832f, ph0 = 0.45f + hash(epoch, 12) * 0.7f;
+                float dth = (hash(epoch, 13) - 0.5f) * 1.2f, dph = -0.25f - hash(epoch, 14) * 0.25f;
+                float f = local / 0.8f;
+                float[] head = skyPt(cam, R * 0.97f, th0 + dth * f + spin, ph0 + dph * f);
+                float[] tail = skyPt(cam, R * 0.97f, th0 + dth * Math.max(0f, f - 0.18f) + spin, ph0 + dph * Math.max(0f, f - 0.18f));
+                float dx = head[0] - tail[0], dy = head[1] - tail[1], dz = head[2] - tail[2];
+                float rxv = head[0] - (float) cam.x, ryv = head[1] - (float) cam.y, rzv = head[2] - (float) cam.z;
+                float sx = dy * rzv - dz * ryv, sy = dz * rxv - dx * rzv, sz = dx * ryv - dy * rxv;
+                float sl = (float) Math.sqrt(sx * sx + sy * sy + sz * sz);
+                if (sl > 1e-6f) {
+                    float w = R * 0.0035f / sl;
+                    sx *= w;
+                    sy *= w;
+                    sz *= w;
+                    float fa = (float) Math.sin(f * Math.PI) * bright;
+                    int hc = shade(0xFFFFFF, 1f, fa), tc = shade(0x9FB8FF, 1f, 0f);
+                    sq(b, m, new float[]{tail[0] - sx, tail[1] - sy, tail[2] - sz}, new float[]{tail[0] + sx, tail[1] + sy, tail[2] + sz},
+                            new float[]{head[0] + sx, head[1] + sy, head[2] + sz}, new float[]{head[0] - sx, head[1] - sy, head[2] - sz}, tc, hc);
+                }
             }
         } else {
             // Breakcore: глитч-блоки и полосы, которые постоянно пересыпаются
@@ -262,16 +342,17 @@ public final class SkyFx {
                             (float) cam.y + rr * (float) Math.sin(lats[k]),
                             (float) cam.z + rr * cph * (float) Math.sin(lons[k])};
                 }
-                vt(b, m, pts[0][0], pts[0][1], pts[0][2], col);
-                vt(b, m, pts[1][0], pts[1][1], pts[1][2], col);
-                vt(b, m, pts[2][0], pts[2][1], pts[2][2], col);
-                vt(b, m, pts[0][0], pts[0][1], pts[0][2], col);
-                vt(b, m, pts[2][0], pts[2][1], pts[2][2], col);
-                vt(b, m, pts[3][0], pts[3][1], pts[3][2], col);
+                sq(b, m, pts[0], pts[1], pts[2], pts[3], col, col);
             }
         }
 
         BuiltBuffer built = b.endNullable();
         if (built != null) BufferRenderer.drawWithGlobalProgram(built);
+    }
+
+    private static float[] skyPt(Vec3d cam, float r, float th, float ph) {
+        float cph = (float) Math.cos(ph);
+        return new float[]{(float) cam.x + r * cph * (float) Math.cos(th), (float) cam.y + r * (float) Math.sin(ph),
+                (float) cam.z + r * cph * (float) Math.sin(th)};
     }
 }

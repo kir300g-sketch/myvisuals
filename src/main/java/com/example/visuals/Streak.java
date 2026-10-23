@@ -28,7 +28,6 @@ public final class Streak {
         lastKill = now;
         level = Math.min(5, count);
         showT0 = now;
-        SoundFx.play(1 + level);
     }
 
     private static float rnd(int i, int salt) {

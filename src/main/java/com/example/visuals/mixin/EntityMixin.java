@@ -2,6 +2,7 @@ package com.example.visuals.mixin;
 
 import com.example.visuals.Freecam;
 import com.example.visuals.Freelook;
+import com.example.visuals.SmoothLook;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,6 +21,9 @@ public class EntityMixin {
             ci.cancel();
         } else if (Freelook.active) {
             Freelook.rotate(cursorDeltaX, cursorDeltaY);
+            ci.cancel();
+         else if (SmoothLook.enabled() && !SmoothLook.applying) {
+            SmoothLook.add(cursorDeltaX, cursorDeltaY);
             ci.cancel();
         }
     }

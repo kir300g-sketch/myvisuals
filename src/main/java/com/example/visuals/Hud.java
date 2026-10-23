@@ -71,6 +71,7 @@ public final class Hud {
 
     private static void render(DrawContext c) {
         MinecraftClient mc = MinecraftClient.getInstance();
+        MotionBlur.render(c, mc);
         if (mc.player == null || mc.options.hudHidden) return;
         Config cfg = Config.I;
         boolean editing = mc.currentScreen instanceof VisualsScreen;
