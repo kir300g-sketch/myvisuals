@@ -145,7 +145,7 @@ public final class SoundFx {
 
     public static void play(int idx) {
         Config c = Config.I;
-        if (!c.soundsEnabled || idx < 0 || idx >= 7) return;
+        if (idx < 0 || idx >= 7) return;
         if (!scanned) scan();
         Path p = files[idx];
         if (p == null) return;
@@ -157,7 +157,7 @@ public final class SoundFx {
                 clip.open(fmt[idx], pcm[idx], 0, pcm[idx].length);
                 if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
                     FloatControl g = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-                    float db = (float) (20.0 * Math.log10(Math.max(0.0001, c.soundVolume)));
+                    float db = (float) (20.0 * Math.log10(Math.max(0.0001, 1.0)));
                     g.setValue(Math.max(g.getMinimum(), Math.min(g.getMaximum(), db)));
                 }
                 clip.addLineListener(ev -> {
