@@ -221,6 +221,7 @@ public class Config {
     // Плавность и размытие камеры
     public boolean smoothEnabled = false;
     public float smoothAmount = 8f;
+    public int smoothMode = 0;
     public boolean blurEnabled = false;
     public float blurStrength = 0.45f;
 

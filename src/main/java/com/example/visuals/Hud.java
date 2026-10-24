@@ -71,6 +71,7 @@ public final class Hud {
 
     private static void render(DrawContext c) {
         MinecraftClient mc = MinecraftClient.getInstance();
+        SmoothLook.frame();
         MotionBlur.render(c, mc);
         if (mc.player == null || mc.options.hudHidden) return;
         Config cfg = Config.I;

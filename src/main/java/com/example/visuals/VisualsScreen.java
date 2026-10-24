@@ -309,6 +309,7 @@ public class VisualsScreen extends Screen {
         wave.opts.add(new Widgets.HueSlider("Цвет", () -> c.waveHue, v -> c.waveHue = v));
 
         Module smooth = mod(fx, "Плавная камера", () -> c.smoothEnabled, v -> c.smoothEnabled = v);
+        smooth.opts.add(new Widgets.Choice("Режим", new String[]{"Наш (регулируемый)", "Ванильный (кинематограф)"}, () -> c.smoothMode, i -> c.smoothMode = i));
         smooth.opts.add(new Widgets.Slider("Плавность", 1f, 30f, 0, () -> c.smoothAmount, v -> c.smoothAmount = v));
         Module blur = mod(fx, "Размытие при повороте", () -> c.blurEnabled, v -> c.blurEnabled = v);
         blur.opts.add(new Widgets.Slider("Сила", 0.1f, 0.85f, 2, () -> c.blurStrength, v -> c.blurStrength = v));

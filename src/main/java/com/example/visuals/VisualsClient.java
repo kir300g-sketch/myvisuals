@@ -34,6 +34,7 @@ public class VisualsClient implements ClientModInitializer {
             Totem.tick(client);
             Freelook.tick(client);
             Freecam.tick(client);
+            SmoothLook.tick(client);
             TestPlayer.tick(client);
         });
 

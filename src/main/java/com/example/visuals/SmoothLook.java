@@ -2,7 +2,10 @@ package com.example.visuals;
 
 import net.minecraft.client.MinecraftClient;
 
-/** Плавный поворот: движения мыши копятся и применяются к взгляду постепенно, каждый кадр. */
+/**
+ * Плавный поворот. Режим 0: наш (движения мыши копятся и применяются постепенно, сила настраивается).
+ * Режим 1: ванильная кинематографичная камера Minecraft.
+ */
 public final class SmoothLook {
     private SmoothLook() {
     }
@@ -10,9 +13,10 @@ public final class SmoothLook {
     public static boolean applying = false;
     private static double px = 0, py = 0;
     private static long last = 0;
+    private static boolean vanillaSetByUs = false;
 
     public static boolean enabled() {
-        return Config.I.smoothEnabled;
+        return Config.I.smoothEnabled && Config.I.smoothMode == 0;
     }
 
     public static void add(double dx, double dy) {
@@ -20,6 +24,19 @@ public final class SmoothLook {
         py += dy;
     }
 
+    /** Раз в тик: включает/выключает ванильную плавную камеру. */
+    public static void tick(MinecraftClient mc) {
+        boolean wantVanilla = Config.I.smoothEnabled && Config.I.smoothMode == 1;
+        if (wantVanilla) {
+            mc.options.smoothCameraEnabled = true;
+            vanillaSetByUs = true;
+        } else if (vanillaSetByUs) {
+            mc.options.smoothCameraEnabled = false;
+            vanillaSetByUs = false;
+        }
+    }
+
+    /** Раз в кадр. */
     public static void frame() {
         MinecraftClient mc = MinecraftClient.getInstance();
         long now = System.nanoTime();
@@ -30,7 +47,7 @@ public final class SmoothLook {
             py = 0;
             return;
         }
-        if (!Config.I.smoothEnabled) {
+        if (!enabled()) {
             if (px != 0 || py != 0) {
                 applying = true;
                 mc.player.changeLookDirection(px, py);

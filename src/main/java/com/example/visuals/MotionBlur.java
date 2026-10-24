@@ -52,7 +52,7 @@ public final class MotionBlur {
         lastYaw = yaw;
         lastPitch = pitch;
         haveRot = true;
-        float target = Math.min(0.85f, cfg.blurStrength) * Math.max(0f, Math.min(1f, (speed - 40f) / 300f));
+        float target = Math.min(0.85f, cfg.blurStrength) * Math.max(0f, Math.min(1f, (speed - 15f) / 200f));
         amt += (target - amt) * Math.min(1f, dt * 25f);
 
         int prevBound = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
@@ -64,7 +64,7 @@ public final class MotionBlur {
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, 33071);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, 33071);
-            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, fw, fh, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, 0x8051, fw, fh, 0, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
             tw = fw;
             th = fh;
             valid = false;
